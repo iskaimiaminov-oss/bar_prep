@@ -123,6 +123,16 @@
   .cl-row{display:flex;gap:8px;margin-bottom:8px}
   .cl-row input{flex:1}
 
+  /* ---------- смена ---------- */
+  .shift{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .shift:last-child{border-bottom:0}
+  .shift .ava{position:relative}
+  .shift.now .ava::after{content:"";position:absolute;right:-1px;bottom:-1px;width:11px;height:11px;border-radius:50%;background:#3FA34D;border:2px solid #fff}
+  .shift.past{opacity:.5}
+  .time{font-weight:600;white-space:nowrap;font-size:15px}
+  .mini{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--olive-soft);margin-left:6px;vertical-align:1px}
+  .mini.close{background:var(--forest);color:var(--cream)}
+
   /* ---------- фото ---------- */
   .photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
   .ph{position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;background:var(--olive-soft);display:grid;place-items:center}
@@ -192,7 +202,7 @@ const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0
 
 let orderDraft = {};
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
-let me = null, tab = 'count', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
+let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
 async function call(action, payload) {
   const q = new URLSearchParams({ action, initData: tg.initData });
@@ -247,7 +257,8 @@ function header() {
 }
 function tabsList() {
   if (me.orderer && !me.isAdmin) return [['order', 'Заказ']];
-  const t = [['count', 'Закрытие'], ['today', 'Сегодня'], ['tk', 'Техкарты']];
+  if (me.isViewer) return [['today', 'Сегодня'], ['tk', 'Техкарты'], ['history', 'История']];
+  const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['tk', 'Техкарты']];
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
   return t;
 }
@@ -370,8 +381,7 @@ function openTk(c, prep, amount) {
 const photoCache = {};
 async function openClosing(x) {
   closeSheet();
-  await getCfg();
-  const byId = {}; cfg.preps.forEach(p => byId[p.id] = p);
+  const byId = {}; me.preps.forEach(p => byId[p.id] = p);
   const c = x.checks;
   const chk = c ? (c.items ? c.items.map(i => `<div class="chk-row ${i.ok ? '' : 'no'}"><span>${i.ok ? '✅' : '❌'}</span><span>${esc(i.t)}</span></div>`).join('')
       : (c.missing.length ? c.missing.map(t => `<div class="chk-row no"><span>❌</span><span>${esc(t)}</span></div>`).join('') : '<p class="sub">Всё отмечено ✅</p>')) : '';
@@ -430,6 +440,20 @@ function bindPhotos() {
   };
 }
 
+function shiftCard() {
+  const list = me.shift || [];
+  if (!list.length) return card(`<h2>На смене сегодня</h2><p class="sub">В графике на сегодня никого не нашёл</p>`);
+  const now = me.now || 0, t = m => Math.floor(m / 60) % 24 + ':' + String(m % 60).padStart(2, '0');
+  const rows = list.map(x => {
+    const cls = now >= x.from && now < x.to ? 'now' : now >= x.to ? 'past' : '';
+    return `<div class="shift ${cls}"><div class="ava">${esc(String(x.name)[0] || '?')}</div>
+      <div class="pname"><b>${esc(x.name)}${x.role ? `<span class="mini">${esc(x.role)}</span>` : ''}${x.to >= 22 * 60 ? '<span class="mini close">закрывает</span>' : ''}</b>
+      <span>${cls === 'now' ? 'сейчас на смене' : cls === 'past' ? 'смена закончилась' : 'придёт в ' + t(x.from)}</span></div>
+      <span class="time">${t(x.from)} – ${t(x.to)}</span></div>`;
+  }).join('');
+  return card(`<h2>На смене сегодня</h2><p class="sub">${new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}</p>${rows}`);
+}
+
 function needRow(i) {
   return `<div class="need"><div class="dot">${esc(String(i.name).trim()[0] || '•').toUpperCase()}</div>
     <div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span></div>
@@ -468,19 +492,20 @@ const views = {
   async today() {
     const t = me.today, made = t.made || {};
     const hasTk = pid => { const p = me.preps.find(x => x.id === pid); return p && p.tk; };
-    let out = '';
+    let out = shiftCard();
+    const ro = me.isViewer;
     if (t.items.length) {
-      const rows = t.items.map(i => made[i.pid]
+      const rows = ro ? t.items.map(i => made[i.pid] ? `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>сварил(а) ${esc(made[i.pid])}</span></div></div>` : needRow(i)).join('') : t.items.map(i => made[i.pid]
         ? `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>сварил(а) ${esc(made[i.pid])}</span></div></div>`
-        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" data-pid="${esc(i.pid)}"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span></div><div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div>${hasTk(i.pid) ? `<button class="tkbtn" data-tk="${esc(i.pid)}" data-amt="${i.need}">ТК</button>` : ''}</div>`).join('');
+        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" ${ro ? 'style="cursor:default"' : `data-pid="${esc(i.pid)}"`}><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span></div><div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div>${hasTk(i.pid) ? `<button class="tkbtn" data-tk="${esc(i.pid)}" data-amt="${i.need}">ТК</button>` : ''}</div>`).join('');
       const allDone = t.items.every(i => made[i.pid]);
-      out += card(`<h2>Сварить сегодня</h2><p class="sub">${allDone ? 'Всё готово — спасибо! 🎉' : 'Отметь, что сварил(а)'}</p>${rows}`);
+      out += card(`<h2>Сварить сегодня</h2><p class="sub">${allDone ? 'Всё готово — спасибо! 🎉' : ro ? 'Что нужно сварить по последнему подсчёту' : 'Отметь, что сварил(а)'}</p>${rows}`);
     } else if (t.done && t.done.none) {
       out += empty('🌿', 'Сегодня варить не нужно', 'Всех заготовок хватает.');
     } else {
       out += empty(me.last ? '🌿' : '🌙', me.last ? 'Всего хватает' : 'Ещё нет подсчёта', me.last ? 'По подсчёту заготовки не нужны.' : 'Остатки внесут вечером на закрытии.');
     }
-    if (!t.items.length || t.items.every(i => made[i.pid])) return out;
+    if (ro || !t.items.length || t.items.every(i => made[i.pid])) return out;
     out += `<div class="dock"><button class="btn ok" id="made" ${sel.size ? '' : 'disabled'}>${sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'}</button></div>`;
     return out;
   },
@@ -547,16 +572,19 @@ const views = {
     const chips = (cfg.schedule || []).map(n => `<button class="chip ${off.indexOf(n) < 0 ? 'on' : ''}" data-name="${esc(n)}">${esc(n)}</button>`).join('') || '<p class="sub">В графике этого месяца никого не нашёл</p>';
     const extra = (cfg.extra || []).map((n, k) => `<div class="user"><div class="ava">${esc(n[0] || '?')}</div><div class="pname"><b>${esc(n)}</b><span>добавлен вручную</span></div><button class="x" data-xdel="${k}">×</button></div>`).join('');
     const users = cfg.users.length
-      ? cfg.users.map(u => `<div class="user"><div class="ava">${esc(String(u.name)[0] || '?')}</div><div class="pname"><b>${esc(u.name)}</b><span>ID ${esc(u.id)}</span></div><button class="x" data-rm="${esc(u.id)}">×</button></div>`).join('')
+      ? cfg.users.map(u => { const v = (cfg.viewers || []).indexOf(u.id) >= 0;
+          return `<div class="user"><div class="ava">${esc(String(u.name)[0] || '?')}</div><div class="pname"><b>${esc(u.name)}</b><span>${v ? '👁 только отчёты' : 'сотрудник'}</span></div>
+          <button class="tkbtn" data-view="${esc(u.id)}" data-on="${v ? 0 : 1}" style="${v ? 'background:var(--forest);color:var(--cream)' : ''}">👁 Отчёты</button><button class="x" data-rm="${esc(u.id)}">×</button></div>`; }).join('')
       : '<p class="sub">Пока никто не зарегистрировался. Скинь команде ссылку на бота.</p>';
     const badges = list => list && list.length ? list.map(n => `<span class="badge">${esc(n)}</span>`).join('') : '<span class="sub">никого</span>';
     const whoHtml = who ? `<h3>Заготовки 14:00–15:30</h3>${badges(who.prep)}<h3>Подсчёт в ${esc(who.countAt)}</h3>${badges(who.count)}` : '';
+    const usersCard = card(`<h2>Подключены к боту</h2><p class="sub">«👁 Отчёты» — наблюдатель: видит историю закрытий и фото, но ничего не меняет</p>${users}`);
     return card(`<h2>Команда бара</h2><p class="sub">Все из графика этого месяца попадают сюда сами. Новый человек в графике — появится тут, убрали из графика — пропадёт. Нажми на имя, чтобы выключить того, кто не работает в баре.</p><div class="chips">${chips}</div>
         <h3>Добавить вручную</h3><p class="sub">Если человека нет в графике</p>${extra}
         <div class="cl-row" style="margin-top:8px"><input id="newName" placeholder="Имя" style="min-width:0;flex:1;border:1.5px solid transparent;background:var(--cream);border-radius:10px;padding:10px 12px;outline:none"><button class="tkbtn" id="addName" style="padding:10px 14px;flex:0 0 auto">Добавить</button></div>
         <h3>Статусы «не в баре»</h3><textarea id="exclude" rows="3">${esc(cfg.exclude.join(', '))}</textarea>
         <button class="btn" id="saveStaff">Сохранить</button>`) +
-      card(`<h2>Подключены к боту</h2>${users}`) +
+      usersCard +
       card(`<h2>Проверка графика</h2><p class="sub">Кого бот отметит сегодня.</p>${whoHtml}<button class="btn soft" id="who">Проверить сегодня</button>`);
   },
 
@@ -677,6 +705,12 @@ const binds = {
       catch (err) { toast(err.message); }
       e.target.disabled = false;
     };
+    document.querySelectorAll('[data-view]').forEach(b => b.onclick = async () => {
+      const on = b.dataset.on === '1';
+      if (on && !(await confirmBox('Сделать наблюдателем? Он увидит историю закрытий и фото, но не сможет ничего менять и закрывать смену.'))) return;
+      b.disabled = true;
+      try { const r = await call('setViewer', { id: b.dataset.view, on }); cfg.viewers = r.viewers; haptic('success'); render(); } catch (e) { toast(e.message); b.disabled = false; }
+    });
     document.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
       if (!(await confirmBox('Отключить сотрудника от бота?'))) return;
       try { await call('removeUser', { id: b.dataset.rm }); cfg = await call('config'); cfgP = null; render(); } catch (e) { toast(e.message); }
@@ -728,7 +762,7 @@ const binds = {
   try {
     me = await call('me');
     const h = new Date().getHours();
-    if (me.today && me.today.items.length && !me.today.done && h >= 12 && h < 20) tab = 'today';
+    if (me.canClose && !me.isViewer && (h >= 20 || h < 3)) tab = 'count';
     if (me.orderer && !me.isAdmin) tab = 'order';
     render();
     prefetch();
