@@ -308,12 +308,17 @@ const views = {
   },
 
   async tk() {
-    const cards = await getTk();
-    if (!cards.length) return empty('📖', 'Техкарт не найдено', 'Бот читает лист «Заготовки» в таблице техкарт.');
-    const linked = {}; me.preps.forEach(p => { if (p.tk) linked[p.tk] = p; });
-    return card(`<h2>Техкарты заготовок</h2><p class="sub">Нажми, чтобы открыть рецепт и пересчитать количество</p>` +
-      cards.map(c => `<div class="tkrow" data-card="${esc(c.id)}"><div class="dot" style="width:40px;height:40px;border-radius:50%;background:var(--olive);color:var(--cream);display:grid;place-items:center;font-weight:600;flex:0 0 auto">${esc(c.title[0] || '•').toUpperCase()}</div>
-        <div class="pname"><b>${esc(c.title)}</b><span>${c.ings.length} ингредиентов${c.shelf ? ' · хранится ' + esc(c.shelf) : ''}</span></div><span style="color:var(--muted);font-size:20px">›</span></div>`).join(''));
+    const all = await getTk();
+    const cards = all.filter(c => !c.hidden), hidden = all.filter(c => c.hidden);
+    if (!all.length) return empty('📖', 'Техкарт не найдено', 'Бот читает лист «Заготовки» в таблице техкарт.');
+    const row = (c, isHidden) => `<div class="tkrow" ${isHidden ? '' : `data-card="${esc(c.id)}"`} style="${isHidden ? 'opacity:.6;cursor:default' : ''}">
+      <div style="width:40px;height:40px;border-radius:50%;background:var(--olive);color:var(--cream);display:grid;place-items:center;font-weight:600;flex:0 0 auto">${esc(c.title[0] || '•').toUpperCase()}</div>
+      <div class="pname"><b>${esc(c.title)}</b><span>${c.ings.length} ингредиентов${c.shelf ? ' · хранится ' + esc(c.shelf) : ''}</span></div>
+      ${me.isAdmin ? `<button class="tkbtn" data-hide="${esc(c.id)}" data-val="${isHidden ? 0 : 1}">${isHidden ? 'Вернуть' : 'Убрать'}</button>` : `<span style="color:var(--muted);font-size:20px">›</span>`}</div>`;
+    let out = card(`<h2>Техкарты заготовок</h2><p class="sub">Нажми, чтобы открыть рецепт и пересчитать количество${me.isAdmin ? '. «Убрать» — скрыть у команды, таблица не меняется' : ''}</p>` +
+      (cards.length ? cards.map(c => row(c, false)).join('') : '<p class="sub">Все техкарты скрыты</p>'));
+    if (me.isAdmin && hidden.length) out += card(`<h2>Убранные</h2><p class="sub">Команда их не видит</p>` + hidden.map(c => row(c, true)).join(''));
+    return out;
   },
 
   async preps() {
@@ -321,7 +326,7 @@ const views = {
     let cards = [];
     try { cards = await getTk(); } catch (e) {}
     const stem = w => norm2(w).slice(0, 4);
-    const guess = name => { const ws = norm2(name).split(' ').filter(w => w.length > 3).map(stem); const c = cards.find(c => norm2(c.title).split(' ').some(w => ws.indexOf(stem(w)) >= 0)); return c ? c.id : ''; };
+    const guess = name => { const ws = norm2(name).split(' ').filter(w => w.length > 3).map(stem); const c = cards.filter(c => !c.hidden).find(c => norm2(c.title).split(' ').some(w => ws.indexOf(stem(w)) >= 0)); return c ? c.id : ''; };
     cfg.preps.forEach(p => { if (p.tk == null || p.tk === undefined) p.tk = guess(p.name); });
     const rows = cfg.preps.map((p, i) => `
       <div class="edit" data-i="${i}">
@@ -332,7 +337,7 @@ const views = {
           <label>Норма<input data-f="norm" inputmode="decimal" value="${esc(p.norm)}" placeholder="0"></label>
         </div>
         <div class="grid3" style="grid-template-columns:2fr 1fr">
-          <label>Техкарта<select data-f="tk"><option value="">— нет —</option>${cards.map(c => `<option value="${esc(c.id)}" ${p.tk === c.id ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}</select></label>
+          <label>Техкарта<select data-f="tk"><option value="">— нет —</option>${cards.filter(c => !c.hidden || p.tk === c.id).map(c => `<option value="${esc(c.id)}" ${p.tk === c.id ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}</select></label>
           <label>Выход ${esc(cards.length ? 'S' : '')}<input data-f="yield" inputmode="decimal" value="${esc(p.yield || '')}" placeholder="${esc(p.unit || 'л')}"></label>
         </div>
       </div>`).join('');
@@ -475,6 +480,14 @@ const binds = {
   },
   history() {},
   tk() {
+    document.querySelectorAll('[data-hide]').forEach(b => b.onclick = async e => {
+      e.stopPropagation();
+      const hide = b.dataset.val === '1', c = tkCards.find(x => x.id === b.dataset.hide);
+      if (hide && !(await confirmBox(`Убрать «${c ? c.title : ''}» из приложения? В таблице техкарта останется.`))) return;
+      b.disabled = true;
+      try { await call('tkHide', { id: b.dataset.hide, hidden: hide }); if (c) c.hidden = hide; haptic('success'); render(); }
+      catch (err) { toast(err.message); b.disabled = false; }
+    });
     document.querySelectorAll('[data-card]').forEach(el => el.onclick = () => {
       const c = tkCards.find(x => x.id === el.dataset.card); if (!c) return;
       const p = me.preps.find(x => x.tk === c.id);
