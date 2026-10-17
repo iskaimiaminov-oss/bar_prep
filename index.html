@@ -250,6 +250,8 @@
   #pull.ready::after{color:var(--forest)}
   #pull.spin{animation:pspin .8s linear infinite}
   @keyframes pspin{from{transform:translate(-50%,40px) rotate(0)}to{transform:translate(-50%,40px) rotate(360deg)}}
+  #kbHide{position:fixed;top:10px;right:12px;z-index:40;display:none;border:0;border-radius:999px;padding:9px 16px;background:var(--forest);color:var(--cream);font:inherit;font-weight:600;font-size:15px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+  #kbHide.show{display:block}
   #toast{position:fixed;left:16px;right:16px;bottom:90px;background:var(--forest);color:var(--cream);padding:13px 16px;border-radius:14px;opacity:0;transform:translateY(16px);transition:.25s;pointer-events:none;z-index:9;text-align:center;font-weight:500}
   #toast.show{opacity:1;transform:none}
 </style>
@@ -777,7 +779,7 @@ const views = {
       const low = v !== '' && toNum(v) < p.min;
       return `<div class="prow ${low ? 'low' : ''}" data-min="${p.min}">
         <div class="pname"><b>${esc(p.name)}<span class="tag">варить</span></b><span>минимум ${fmt(p.min)} ${esc(p.unit)}</span></div>
-        <label class="field"><input inputmode="decimal" data-id="${esc(p.id)}" value="${esc(v)}" placeholder="0"><small>${esc(p.unit)}</small></label>
+        <label class="field"><input inputmode="decimal" enterkeyhint="next" data-id="${esc(p.id)}" value="${esc(v)}" placeholder="0"><small>${esc(p.unit)}</small></label>
       </div>`;
     }).join('');
     const last = me.last ? `<p class="sub">Последний подсчёт: ${esc(me.last.by)}, ${fmtTs(me.last.ts)}</p>` : `<p class="sub">Внеси, сколько осталось каждой заготовки</p>`;
@@ -863,7 +865,7 @@ const views = {
     const rows = me.preps.map(p => {
       const v = orderDraft[p.id] != null ? orderDraft[p.id] : (o.items[p.id] != null ? String(o.items[p.id]) : '');
       return `<div class="prow"><div class="pname"><b>${esc(p.name)}</b></div>
-        <label class="field"><input inputmode="decimal" data-oid="${esc(p.id)}" value="${esc(v)}" placeholder="0"><small>${esc(p.unit)}</small></label></div>`;
+        <label class="field"><input inputmode="decimal" enterkeyhint="next" data-oid="${esc(p.id)}" value="${esc(v)}" placeholder="0"><small>${esc(p.unit)}</small></label></div>`;
     }).join('');
     return card(`<h2>Заказ заготовок</h2><p class="sub">Впиши, сколько нужно. Заказ уйдёт в группу бара <b>${esc(when)} в 08:00</b>.${has ? ' Заказ уже сохранён — можно изменить до отправки.' : ''}</p>${rows}`) +
       `<div class="dock"><button class="btn" id="sendOrder">${has ? 'Обновить заказ' : 'Отправить заказ'}</button></div>`;
@@ -1184,6 +1186,36 @@ const binds = {
   }
 };
 
+// ---- клавиатура: «Готово», тап мимо поля, Enter → следующее поле ----
+function initKeyboard() {
+  const kb = document.createElement('button'); kb.id = 'kbHide'; kb.type = 'button'; kb.textContent = 'Готово ⌄';
+  document.body.appendChild(kb);
+  const isField = el => !!el && ((el.tagName === 'INPUT' && !/^(checkbox|radio|file|button|submit|date|time)$/.test(el.type)) || el.tagName === 'TEXTAREA');
+  const hide = () => { const a = document.activeElement; if (isField(a)) a.blur(); kb.classList.remove('show'); };
+  document.addEventListener('focusin', e => { if (isField(e.target)) kb.classList.add('show'); });
+  document.addEventListener('focusout', () => setTimeout(() => { if (!isField(document.activeElement)) kb.classList.remove('show'); }, 80));
+  kb.addEventListener('pointerdown', e => { e.preventDefault(); hide(); });
+  kb.addEventListener('click', hide);
+  // тап по пустому месту закрывает клавиатуру
+  let sx = 0, sy = 0;
+  document.addEventListener('touchstart', e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (!isField(document.activeElement)) return;
+    const t = e.target, c = e.changedTouches[0];
+    if (Math.abs(c.clientX - sx) > 10 || Math.abs(c.clientY - sy) > 10) return;   // это был скролл
+    if (isField(t) || (t.closest && t.closest('label,select,button,.field,#kbHide'))) return;
+    hide();
+  }, { passive: true });
+  // Enter: в подсчёте — к следующему полю, иначе закрыть клавиатуру
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+    e.preventDefault();
+    const list = [...document.querySelectorAll('input[data-id],input[data-oid],input[data-ing]')].filter(i => !i.disabled);
+    const i = list.indexOf(e.target);
+    if (i >= 0 && list[i + 1]) { list[i + 1].focus(); list[i + 1].select && list[i + 1].select(); } else hide();
+  });
+}
+
 // ---- обновление свайпом вниз ----
 async function refreshAll() {
   taskData = evData = homeData = hist = cfg = tkCards = null; cfgP = tkP = null;
@@ -1232,6 +1264,7 @@ function initPull() {
     prefetch();
     if (restored) setTimeout(() => toast('Черновик закрытия восстановлен ✍️'), 400);
     initPull();
+    initKeyboard();
   } catch (e) { fail('🔒', esc(e.message), ''); }
 })();
 </script>
