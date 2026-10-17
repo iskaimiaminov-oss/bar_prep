@@ -31,7 +31,7 @@
 
   /* ---------- вкладки ---------- */
   .tabs-wrap{position:sticky;top:0;z-index:5;margin-top:-30px;padding:0 12px}
-  .tabs{display:flex;gap:4px;overflow-x:auto;background:var(--card);border-radius:999px;padding:5px;box-shadow:0 6px 20px rgba(10,51,32,.10);scrollbar-width:none}
+  .tabs{display:flex;gap:4px;overflow-x:auto;position:relative;background:var(--card);border-radius:999px;padding:5px;box-shadow:0 6px 20px rgba(10,51,32,.10);scrollbar-width:none}
   .tabs::-webkit-scrollbar{display:none}
   .tab{flex:1 0 auto;border:0;background:none;padding:9px 12px;border-radius:999px;font-size:14px;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap;transition:.2s}
   .tab.on{background:var(--forest);color:var(--cream)}
@@ -283,7 +283,7 @@ const LOOP = `<svg class="loop" viewBox="0 0 200 200" fill="none" stroke="#F2F5C
 function header() {
   const first = String(me.name || '').split(' ')[0];
   return `<div class="hero">${LOOP}
-    <div class="brand"><img class="logo" src="${LOGO}" alt=""><div><h1>Рассвет</h1><p>Заготовки бара</p></div></div>
+    <div class="brand"><img class="logo" src="${LOGO}" alt=""><div><h1>Рассвет</h1><p>Твоя любимая кофейня🫶</p></div></div>
     <div class="hello">Привет, ${esc(first)} 👋</div></div>`;
 }
 function tabsList() {
@@ -300,6 +300,15 @@ async function render() {
   const my = ++render.seq;
   app.innerHTML = header() + `<div class="tabs-wrap"><div class="tabs">${tabs}</div></div><main id="main"></main>`;
   app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { if (b.dataset.tab === tab) return; tab = b.dataset.tab; lastResult = null; render(); window.scrollTo(0, 0); });
+  // активная вкладка — по центру полосы вкладок (плавно, от прошлой позиции)
+  const bar = app.querySelector('.tabs'), on = bar && bar.querySelector('.tab.on');
+  if (bar && on) {
+    bar.scrollLeft = render.tabScroll || 0;
+    const target = Math.max(0, on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2);
+    requestAnimationFrame(() => bar.scrollTo({ left: target, behavior: render.tabScroll == null ? 'auto' : 'smooth' }));
+    render.tabScroll = target;
+    bar.addEventListener('scroll', () => { render.tabScroll = bar.scrollLeft; }, { passive: true });
+  }
   const main = document.getElementById('main');
   const slow = setTimeout(() => { if (my === render.seq) main.innerHTML = card('<div class="loader" style="min-height:160px"><img src="' + LOGO + '" alt="" style="width:56px;height:56px"><span>Загружаю…</span></div>'); }, 120);
   let body = '';
@@ -521,7 +530,12 @@ const views = {
         (items.length ? `<h3>Завтра нужно сварить</h3>` + items.map(needRow).join('') : `<div class="status"><span class="big">🌿</span>Всего хватает — завтра варить не нужно</div>`) +
         `<button class="btn soft" id="again">Изменить подсчёт</button>`);
     }
-    if (me.canClose === false) return empty('🌿', 'Ты не на смене, отдыхай', (me.closers && me.closers.length) ? 'Сегодня смену закрывает: ' + me.closers.map(esc).join(', ') : 'Смену закрывают те, кто работает до 22:00 или 23:00.');
+    if (me.canClose === false) {
+      const first = esc(String(me.name || '').split(' ')[0]);
+      const works = (me.shift || []).some(x => x.name === me.name);
+      const who = (me.closers && me.closers.length) ? 'Сегодня смену закрывает: ' + me.closers.map(esc).join(', ') : '';
+      return empty(works ? '☕' : '🌿', works ? first + ', ты сегодня не закрываешь, отдыхай💋' : first + ', ты сегодня не работаешь, отдыхай💋', who);
+    }
     if (!me.preps.length) return empty('🫙', 'Заготовок пока нет', me.isAdmin ? 'Добавь их во вкладке «Заготовки».' : 'Администратор ещё не добавил список.');
     const rows = me.preps.map(p => {
       const v = draft[p.id] != null ? draft[p.id] : '';
