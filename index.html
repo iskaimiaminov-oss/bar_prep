@@ -94,6 +94,30 @@
   .days.soon{background:var(--warm-soft);color:var(--warm)}
   .days.today{background:var(--danger);color:#fff}
 
+  /* ---------- техкарты ---------- */
+  .tkbtn{border:0;background:var(--olive-soft);color:var(--forest);border-radius:10px;padding:7px 10px;font-size:13px;font-weight:600;cursor:pointer;flex:0 0 auto}
+  .tkrow{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer}
+  .tkrow:last-child{border-bottom:0}
+  .sheet-bg{position:fixed;inset:0;background:rgba(10,51,32,.45);z-index:20;display:flex;align-items:flex-end;animation:fade .2s}
+  .sheet{background:var(--paper);width:100%;max-height:92vh;overflow-y:auto;border-radius:24px 24px 0 0;padding:8px 16px calc(20px + env(safe-area-inset-bottom));animation:up .25s ease-out}
+  .grab{width:40px;height:5px;border-radius:9px;background:var(--line);margin:6px auto 12px}
+  @keyframes up{from{transform:translateY(40px);opacity:.4}}
+  @keyframes fade{from{opacity:0}}
+  .sheet h2{margin:0;font-size:22px}
+  .amount{display:flex;align-items:center;gap:10px;background:var(--forest);color:var(--cream);border-radius:16px;padding:12px 14px;margin:12px 0}
+  .amount span{flex:1;font-size:14px;opacity:.85}
+  .amount input{width:90px;border:0;border-radius:10px;padding:9px;text-align:right;font-size:20px;font-weight:600;background:var(--cream);color:var(--forest);outline:none}
+  .sizes{display:flex;gap:8px;margin:12px 0}
+  .sizes button{flex:1;border:1.5px solid var(--line);background:var(--card);border-radius:12px;padding:10px;font-weight:600;cursor:pointer}
+  .sizes button.on{background:var(--forest);color:var(--cream);border-color:var(--forest)}
+  .ing{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line);font-size:16px}
+  .ing:last-child{border-bottom:0}
+  .ing b{white-space:nowrap}
+  .method{white-space:pre-wrap;font-size:15px;line-height:1.5;color:var(--forest-2)}
+  select{width:100%;border:1.5px solid transparent;background:var(--cream);border-radius:10px;padding:10px 12px;outline:none;font:inherit;color:var(--forest);appearance:none}
+  .cl-row{display:flex;gap:8px;margin-bottom:8px}
+  .cl-row input{flex:1}
+
   /* ---------- админка ---------- */
   .edit{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
   .edit .top{display:flex;gap:8px;align-items:center}
@@ -138,11 +162,12 @@ const app = document.getElementById('app');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = x => String(Math.round(Number(x) * 100) / 100).replace('.', ',');
 const fmtTs = ts => { const d = new Date(ts); return d.toLocaleDateString('ru-RU',{day:'numeric',month:'long'}) + ', ' + d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); };
+const norm2 = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const toNum = v => { const s = String(v).trim().replace(',', '.'); return s === '' ? '' : Number(s); };
 const ICONS = ['🍯','🍋','🫙','🧴','🍓','🌿','🥛','🍊','🫐','🍵'];
 const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % ICONS.length];
 
-let sel = new Set();
+let sel = new Set(), checks = new Set(), tkCards = null;
 let me = null, tab = 'count', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
 async function call(action, payload) {
@@ -171,7 +196,7 @@ function header() {
     <div class="hello">Привет, ${esc(first)} 👋</div></div>`;
 }
 function tabsList() {
-  const t = [['count', 'Подсчёт'], ['today', 'Сегодня']];
+  const t = [['count', 'Закрытие'], ['today', 'Сегодня'], ['tk', 'Техкарты']];
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
   return t;
 }
@@ -184,6 +209,51 @@ async function render() {
   (binds[tab] || (() => {}))();
 }
 
+async function getTk() { if (!tkCards) tkCards = (await call('tk')).cards; return tkCards; }
+const q = x => { x = Number(x); if (!isFinite(x)) return '—'; return fmt(x >= 20 ? Math.round(x) : x >= 1 ? Math.round(x * 10) / 10 : Math.round(x * 100) / 100); };
+function closeSheet() { const el = document.getElementById('sheet'); if (el) el.remove(); }
+// Открыть техкарту. prep — заготовка из приложения (может не быть), amount — сколько сварить
+function openTk(c, prep, amount) {
+  closeSheet();
+  const yieldS = prep && Number(prep.yield) > 0 ? Number(prep.yield) : 0;
+  let size = 0, amt = amount != null ? amount : (yieldS || '');
+  const wrap = document.createElement('div');
+  wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+  const draw = () => {
+    const factor = yieldS && Number(amt) > 0 ? Number(amt) / yieldS : null;
+    const ings = c.ings.map(i => {
+      const val = factor != null ? (i.amounts[0] != null ? i.amounts[0] * factor : null) : i.amounts[size];
+      return `<div class="ing"><span>${esc(i.name)}</span><b>${val == null ? '—' : q(val) + ' ' + esc(i.unit)}</b></div>`;
+    }).join('');
+    const ctrl = yieldS
+      ? `<div class="amount"><span>Сколько сварить${factor ? '<br><small>≈ ' + q(factor) + ' × размер ' + esc(c.sizes[0]) + '</small>' : ''}</span><input id="amt" inputmode="decimal" value="${esc(amt)}"><b>${esc(prep.unit || '')}</b></div>`
+      : `<div class="sizes">${c.sizes.map((z, k) => `<button data-size="${k}" class="${k === size ? 'on' : ''}">${esc(z)}</button>`).join('')}</div>`;
+    wrap.innerHTML = `<div class="sheet"><div class="grab"></div>
+      <h2>${esc(c.title)}</h2><p class="sub" style="margin-top:4px">${c.shelf ? '🕒 Хранится ' + esc(c.shelf) : 'Техкарта'}</p>
+      ${ctrl}<div class="card" style="padding:6px 14px">${ings}</div>
+      ${c.method ? `<h3>Приготовление</h3><div class="card method">${esc(c.method)}</div>` : ''}
+      <button class="btn soft" id="closeSheet">Закрыть</button></div>`;
+    wrap.querySelector('#closeSheet').onclick = closeSheet;
+    wrap.querySelectorAll('[data-size]').forEach(b => b.onclick = () => { size = +b.dataset.size; draw(); });
+    const inp = wrap.querySelector('#amt');
+    if (inp) inp.oninput = () => {
+      amt = toNum(inp.value);
+      const f = yieldS && Number(amt) > 0 ? Number(amt) / yieldS : null;
+      wrap.querySelectorAll('.ing b').forEach((b, k) => { const i = c.ings[k]; b.textContent = f != null && i.amounts[0] != null ? q(i.amounts[0] * f) + ' ' + i.unit : '—'; });
+      const sm = wrap.querySelector('.amount small'); if (sm && f) sm.textContent = '≈ ' + q(f) + ' × размер ' + c.sizes[0];
+    };
+  };
+  wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+  draw();
+  document.body.appendChild(wrap);
+}
+async function openTkForPrep(pid, amount) {
+  const p = me.preps.find(x => x.id === pid);
+  if (!p || !p.tk) return toast('Для этой заготовки техкарта не привязана');
+  try { const c = (await getTk()).find(x => x.id === p.tk); if (!c) return toast('Техкарта не найдена в таблице'); openTk(c, p, amount); }
+  catch (e) { toast(e.message); }
+}
+
 function needRow(i) {
   return `<div class="need"><div class="dot">${esc(String(i.name).trim()[0] || '•').toUpperCase()}</div>
     <div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span></div>
@@ -194,7 +264,7 @@ const views = {
   async count() {
     if (lastResult) {
       const items = lastResult.items;
-      return card(`<div class="empty" style="padding-bottom:6px"><div class="icon">👏</div><h2>Спасибо, остатки отправлены!</h2></div>` +
+      return card(`<div class="empty" style="padding-bottom:6px"><div class="icon">🌙</div><h2>${(me.checklist || []).length ? 'Смена закрыта, спасибо!' : 'Спасибо, остатки отправлены!'}</h2></div>` +
         (items.length ? `<h3>Завтра нужно сварить</h3>` + items.map(needRow).join('') : `<div class="status"><span class="big">🌿</span>Всего хватает — завтра варить не нужно</div>`) +
         `<button class="btn soft" id="again">Изменить подсчёт</button>`);
     }
@@ -208,19 +278,22 @@ const views = {
       </div>`;
     }).join('');
     const last = me.last ? `<p class="sub">Последний подсчёт: ${esc(me.last.by)}, ${fmtTs(me.last.ts)}</p>` : `<p class="sub">Внеси, сколько осталось каждой заготовки</p>`;
-    return card(`<h2>Остатки на закрытии</h2>${last}
+    const cl = me.checklist || [];
+    const clHtml = cl.length ? card(`<h2>Чек-лист закрытия</h2><p class="sub" id="clt">Отмечено ${checks.size} из ${cl.length}</p>` +
+      cl.map((t, k) => `<div class="check ${checks.has(k) ? 'on' : ''}" data-ci="${k}"><div class="box">✓</div><div class="pname"><b>${esc(t)}</b></div></div>`).join('')) : '';
+    return clHtml + card(`<h2>Остатки заготовок</h2>${last}
       <div class="progress"><i id="prog" style="width:0"></i></div><p class="sub" id="progt" style="margin:0 0 4px"></p>${rows}`) +
-      `<div class="dock"><button class="btn" id="send">Отправить остатки</button></div>`;
+      `<div class="dock"><button class="btn" id="send">${cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'}</button></div>`;
   },
 
   async today() {
     const t = me.today, made = t.made || {};
-    const inList = {}; t.items.forEach(i => inList[i.pid] = 1);
+    const hasTk = pid => { const p = me.preps.find(x => x.id === pid); return p && p.tk; };
     let out = '';
     if (t.items.length) {
       const rows = t.items.map(i => made[i.pid]
         ? `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>сварил(а) ${esc(made[i.pid])}</span></div></div>`
-        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" data-pid="${esc(i.pid)}"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span></div><div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div></div>`).join('');
+        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" data-pid="${esc(i.pid)}"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span></div><div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div>${hasTk(i.pid) ? `<button class="tkbtn" data-tk="${esc(i.pid)}" data-amt="${i.need}">ТК</button>` : ''}</div>`).join('');
       const allDone = t.items.every(i => made[i.pid]);
       out += card(`<h2>Сварить сегодня</h2><p class="sub">${allDone ? 'Всё готово — спасибо! 🎉' : 'Отметь, что сварил(а)'}</p>${rows}`);
     } else if (t.done && t.done.none) {
@@ -233,8 +306,22 @@ const views = {
     return out;
   },
 
+  async tk() {
+    const cards = await getTk();
+    if (!cards.length) return empty('📖', 'Техкарт не найдено', 'Бот читает лист «Заготовки» в таблице техкарт.');
+    const linked = {}; me.preps.forEach(p => { if (p.tk) linked[p.tk] = p; });
+    return card(`<h2>Техкарты заготовок</h2><p class="sub">Нажми, чтобы открыть рецепт и пересчитать количество</p>` +
+      cards.map(c => `<div class="tkrow" data-card="${esc(c.id)}"><div class="dot" style="width:40px;height:40px;border-radius:50%;background:var(--olive);color:var(--cream);display:grid;place-items:center;font-weight:600;flex:0 0 auto">${esc(c.title[0] || '•').toUpperCase()}</div>
+        <div class="pname"><b>${esc(c.title)}</b><span>${c.ings.length} ингредиентов${c.shelf ? ' · хранится ' + esc(c.shelf) : ''}</span></div><span style="color:var(--muted);font-size:20px">›</span></div>`).join(''));
+  },
+
   async preps() {
     if (!cfg) cfg = await call('config');
+    let cards = [];
+    try { cards = await getTk(); } catch (e) {}
+    const stem = w => norm2(w).slice(0, 4);
+    const guess = name => { const ws = norm2(name).split(' ').filter(w => w.length > 3).map(stem); const c = cards.find(c => norm2(c.title).split(' ').some(w => ws.indexOf(stem(w)) >= 0)); return c ? c.id : ''; };
+    cfg.preps.forEach(p => { if (p.tk == null || p.tk === undefined) p.tk = guess(p.name); });
     const rows = cfg.preps.map((p, i) => `
       <div class="edit" data-i="${i}">
         <div class="top"><input data-f="name" value="${esc(p.name)}" placeholder="Название, например «Сироп ваниль»"><button class="x" data-del="${i}" title="Удалить">×</button></div>
@@ -243,10 +330,18 @@ const views = {
           <label>Минимум<input data-f="min" inputmode="decimal" value="${esc(p.min)}" placeholder="0"></label>
           <label>Норма<input data-f="norm" inputmode="decimal" value="${esc(p.norm)}" placeholder="0"></label>
         </div>
+        <div class="grid3" style="grid-template-columns:2fr 1fr">
+          <label>Техкарта<select data-f="tk"><option value="">— нет —</option>${cards.map(c => `<option value="${esc(c.id)}" ${p.tk === c.id ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}</select></label>
+          <label>Выход ${esc(cards.length ? 'S' : '')}<input data-f="yield" inputmode="decimal" value="${esc(p.yield || '')}" placeholder="${esc(p.unit || 'л')}"></label>
+        </div>
       </div>`).join('');
-    return card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить.</p>
+    const cl = cfg.checklist || [];
+    return card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. Выход S — сколько получается из размера S техкарты (в единицах заготовки), по нему считается пересчёт.</p>
       ${rows || ''}<button class="btn soft" id="add">+ Добавить заготовку</button>`) +
-      `<div class="dock"><button class="btn" id="save">Сохранить</button></div>`;
+      card(`<h2>Чек-лист закрытия</h2><p class="sub">Пункты, которые отмечают на закрытии смены</p><div id="cl">` +
+        cl.map((t, k) => `<div class="cl-row edit" style="padding:8px;margin-bottom:8px"><input data-cl value="${esc(t)}" placeholder="Например: почистить кофемашину"><button class="x" data-cldel="${k}">×</button></div>`).join('') +
+        `</div><button class="btn soft" id="cladd">+ Добавить пункт</button><button class="btn" id="clsave">Сохранить чек-лист</button>`) +
+      `<div class="dock"><button class="btn" id="save">Сохранить заготовки</button></div>`;
   },
 
   async staff() {
@@ -284,6 +379,14 @@ const binds = {
     const again = document.getElementById('again');
     if (again) again.onclick = () => { lastResult = null; render(); };
     const btn = document.getElementById('send'); if (!btn) return;
+    const cl = me.checklist || [];
+    document.querySelectorAll('[data-ci]').forEach(el => el.onclick = () => {
+      const k = +el.dataset.ci;
+      if (checks.has(k)) checks.delete(k); else checks.add(k);
+      el.classList.toggle('on', checks.has(k));
+      document.getElementById('clt').textContent = `Отмечено ${checks.size} из ${cl.length}`;
+      try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
+    });
     const inputs = [...document.querySelectorAll('input[data-id]')];
     const upd = () => {
       const filled = inputs.filter(i => i.value.trim() !== '').length;
@@ -301,13 +404,16 @@ const binds = {
       const values = {}; let emptyN = 0, bad = 0;
       inputs.forEach(i => { const v = toNum(i.value); if (v === '') emptyN++; else if (isNaN(v) || v < 0) bad++; else values[i.dataset.id] = v; });
       if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
-      if (emptyN && !(await confirmBox(`Не заполнено позиций: ${emptyN}. Отправить так?`))) return;
+      const miss = cl.length - checks.size;
+      if (miss > 0 && !(await confirmBox(`В чек-листе не отмечено пунктов: ${miss}. Всё равно закрыть смену?`))) return;
+      if (emptyN && !(await confirmBox(`Не заполнено остатков: ${emptyN}. Отправить так?`))) return;
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values }); draft = {}; me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); }
-      catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Отправить остатки'; }
+      try { lastResult = await call('count', { values, checks: [...checks] }); draft = {}; checks.clear(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); }
+      catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
   today() {
+    document.querySelectorAll('[data-tk]').forEach(b => b.onclick = e => { e.stopPropagation(); openTkForPrep(b.dataset.tk, toNum(b.dataset.amt)); });
     const btn = document.getElementById('made'); if (!btn) return;
     const sync = () => { btn.disabled = !sel.size; btn.textContent = sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'; };
     document.querySelectorAll('[data-pid]').forEach(el => el.onclick = () => {
@@ -326,13 +432,21 @@ const binds = {
   preps() {
     const collect = () => document.querySelectorAll('.edit[data-i]').forEach(row => {
       const p = cfg.preps[row.dataset.i];
-      row.querySelectorAll('input').forEach(inp => p[inp.dataset.f] = inp.value);
+      row.querySelectorAll('input,select').forEach(inp => p[inp.dataset.f] = inp.value);
     });
     document.getElementById('add').onclick = () => {
-      collect(); cfg.preps.push({ name: '', unit: '', min: '', norm: '' }); render();
+      collect(); cfg.preps.push({ name: '', unit: '', min: '', norm: '', tk: '', yield: '' }); render();
       setTimeout(() => { const l = document.querySelectorAll('.edit input[data-f="name"]'); if (l.length) { l[l.length - 1].focus(); l[l.length - 1].scrollIntoView({ block: 'center' }); } }, 50);
     };
     document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { collect(); cfg.preps.splice(+b.dataset.del, 1); render(); });
+    const clCollect = () => { cfg.checklist = [...document.querySelectorAll('[data-cl]')].map(i => i.value); };
+    document.getElementById('cladd').onclick = () => { collect(); clCollect(); cfg.checklist.push(''); render(); setTimeout(() => { const l = document.querySelectorAll('[data-cl]'); if (l.length) { l[l.length - 1].focus(); l[l.length - 1].scrollIntoView({ block: 'center' }); } }, 50); };
+    document.querySelectorAll('[data-cldel]').forEach(b => b.onclick = () => { collect(); clCollect(); cfg.checklist.splice(+b.dataset.cldel, 1); render(); });
+    document.getElementById('clsave').onclick = async e => {
+      clCollect(); e.target.disabled = true;
+      try { const r = await call('saveChecklist', { items: cfg.checklist }); cfg.checklist = r.checklist; me = await call('me'); toast('Чек-лист сохранён ✅'); haptic('success'); render(); }
+      catch (err) { toast(err.message); e.target.disabled = false; }
+    };
     document.getElementById('save').onclick = async e => {
       collect(); e.target.disabled = true;
       try { const r = await call('savePreps', { preps: cfg.preps }); cfg.preps = r.preps; me = await call('me'); toast('Сохранено ✅'); haptic('success'); render(); }
@@ -358,7 +472,14 @@ const binds = {
       try { who = await call('whoToday'); render(); } catch (err) { toast(err.message); e.target.disabled = false; }
     };
   },
-  history() {}
+  history() {},
+  tk() {
+    document.querySelectorAll('[data-card]').forEach(el => el.onclick = () => {
+      const c = tkCards.find(x => x.id === el.dataset.card); if (!c) return;
+      const p = me.preps.find(x => x.tk === c.id);
+      openTk(c, p, p && p.yield ? p.yield : null);
+    });
+  }
 };
 
 (async function init() {
