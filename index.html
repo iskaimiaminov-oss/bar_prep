@@ -945,7 +945,7 @@ const views = {
 
   async history() {
     if (!hist) hist = (await call('history')).items;
-    const rep = me.isAdmin ? card(`<h2>🏆 Итоги 2 недель</h2><p class="sub">Рейтинг, кто сколько заготовок сварил. Приходит в группу сам раз в 2 недели в понедельник в 12:00</p><button class="btn soft" id="reportNow">Отправить итоги сейчас</button><button class="btn soft" id="weekNow" style="margin-top:8px">📊 Сводка недели мне в личку</button>`) : '';
+    const rep = me.isAdmin ? card(`<h2>🏆 Итоги 2 недель</h2><p class="sub">Рейтинг, кто сколько заготовок сварил. Приходит в группу сам раз в 2 недели в понедельник в 12:00</p><button class="btn soft" id="reportNow">Отправить итоги сейчас</button><button class="btn soft" id="weekNow" style="margin-top:8px">📊 Сводка недели мне в личку</button><button class="btn soft" id="briefNow" style="margin-top:8px">☀️ Утренний брифинг мне в личку</button>`) : '';
     if (!hist.length) return rep + empty('📜', 'Закрытий пока нет', 'Здесь появится история каждого закрытия смены.');
     const day = d => new Date(d + 'T12:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
     return rep + card(`<h2>История закрытий</h2><p class="sub">Последние 45 дней. Нажми, чтобы посмотреть подробно</p>`) +
@@ -1063,10 +1063,19 @@ const binds = {
       catch (err) { toast(err.message); }
       e.target.disabled = false;
     };
+    // дата ДР: можно набирать только цифры — точка ставится сама (2210 → 22.10)
+    document.querySelectorAll('[data-bd]').forEach(inp => inp.oninput = () => {
+      const dg = inp.value.replace(/\D/g, '').slice(0, 4);
+      inp.value = dg.length > 2 ? dg.slice(0, 2) + '.' + dg.slice(2) : dg;
+    });
     document.querySelectorAll('[data-bd]').forEach(inp => inp.onchange = async () => {
-      const m = inp.value.trim().match(/^(\d{1,2})[.\/-](\d{1,2})$/);
-      if (inp.value.trim() && !m) return toast('Дата в формате дд.мм, например 21.10');
-      const date = m ? String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0') : '';
+      const dg = inp.value.replace(/\D/g, '');
+      let dd = 0, mm = 0;
+      if (dg.length === 4) { dd = +dg.slice(0, 2); mm = +dg.slice(2); }
+      else if (dg.length === 3) { dd = +dg.slice(0, 1); mm = +dg.slice(1); }
+      if (dg && !(dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12)) return toast('Введи день и месяц, например 2210 → 22.10');
+      if (dg) inp.value = String(dd).padStart(2, '0') + '.' + String(mm).padStart(2, '0');
+      const date = dg ? String(mm).padStart(2, '0') + '-' + String(dd).padStart(2, '0') : '';
       try { const r = await call('setBirthday', { name: inp.dataset.bd, date }); cfg.bdays = r.bdays; if (homeData) homeData.bdays = r.bdays; toast(date ? 'День рождения сохранён 🎂' : 'Удалено'); } catch (e) { toast(e.message); }
     });
     document.querySelectorAll('[data-stname]').forEach(b => b.onclick = async () => {
@@ -1145,6 +1154,8 @@ const binds = {
     };
   },
   history() {
+    const bb = document.getElementById('briefNow');
+    if (bb) bb.onclick = async () => { bb.disabled = true; try { await call('briefNow'); toast('Брифинг отправлен тебе в личку ☀️'); } catch (e) { toast(e.message); } bb.disabled = false; };
     const wb = document.getElementById('weekNow');
     if (wb) wb.onclick = async () => { wb.disabled = true; try { await call('weekNow'); toast('Сводка отправлена тебе в личку 📊'); } catch (e) { toast(e.message); } wb.disabled = false; };
     const rb = document.getElementById('reportNow');
