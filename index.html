@@ -14,8 +14,20 @@
     --cream:#F2F5CF; --paper:#FAFBEF; --card:#FFFFFF;
     --muted:#667A5B; --line:rgba(10,51,32,.10);
     --warm:#C2652B; --warm-soft:#F8E6D6; --ok:#3F7A3A; --ok-soft:#E1EED7; --danger:#B4412F;
-    --r:18px;
+    --r:18px; --focus:#FFFFFF;
   }
+  html[data-theme="dark"]{
+    --olive-soft:#26331F; --forest:#E6ECCF; --forest-2:#C3CEAA;
+    --cream:#121C15; --paper:#0E1611; --card:#18231B; --focus:#0B120E;
+    --muted:#9AA88C; --line:rgba(230,236,207,.10);
+    --warm:#E8995B; --warm-soft:#3B2B1C; --ok:#8CC47F; --ok-soft:#1E3220; --danger:#EC7A64;
+  }
+  html[data-theme="dark"] .hero{--forest:#0A3320; --forest-2:#164A30; --cream:#F2F5CF; color:#0A3320}
+  html[data-theme="dark"] .tabs{box-shadow:0 6px 20px rgba(0,0,0,.35)}
+  html[data-theme="dark"] .dock .btn{box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  html[data-theme="dark"] .st3,html[data-theme="dark"] .seg button.on.st3{background:#E6ECCF;color:#0A3320}
+  html[data-theme="dark"] .mini.close{background:#E6ECCF;color:#0A3320}
+  html[data-theme="dark"] #toast{background:#E6ECCF;color:#0A3320}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;background:var(--paper);color:var(--forest);font:16px/1.4 "Corbel Rassvet",Corbel,-apple-system,system-ui,"Segoe UI",Roboto,sans-serif}
   button,input,textarea{font:inherit;color:inherit}
@@ -53,7 +65,7 @@
   .tag{display:none;margin-left:6px;font-size:11px;font-weight:600;color:var(--warm);background:var(--warm-soft);padding:2px 7px;border-radius:999px;vertical-align:1px}
   .prow.low .tag{display:inline-block}
   .field{display:flex;align-items:center;background:var(--cream);border-radius:12px;padding:0 10px 0 4px;border:1.5px solid transparent;transition:.15s}
-  .field:focus-within{border-color:var(--olive);background:#fff}
+  .field:focus-within{border-color:var(--olive);background:var(--focus)}
   .prow.low .field{background:var(--warm-soft)}
   .field input{width:64px;border:0;background:none;padding:10px 4px 10px 8px;text-align:right;font-size:17px;font-weight:500;outline:none}
   .field small{color:var(--muted);font-size:13px;min-width:14px}
@@ -115,7 +127,7 @@
   .ing{align-items:center}
   .ing .field{flex:0 0 auto}
   .ing .field input{width:78px;font-size:16px;padding:8px 4px 8px 6px}
-  .ing.own .field{background:#fff;border-color:var(--forest)}
+  .ing.own .field{background:var(--focus);border-color:var(--forest)}
   .ing.limit span{color:var(--warm);font-weight:600}
   .ing input:disabled{opacity:.4}
   .method{white-space:pre-wrap;font-size:15px;line-height:1.5;color:var(--forest-2)}
@@ -137,9 +149,11 @@
   .seg button.on.st2{background:#F6E1BE;color:#8A5414}
   .seg button.on.st3{background:#0A3320;color:#F2F5CF}
   .strow{padding:10px 0;border-bottom:1px solid var(--line)}
+  .bdin{width:62px;border:1.5px solid transparent;background:var(--cream);border-radius:8px;padding:4px 6px;text-align:center;font:inherit;color:var(--forest);outline:none}
+  .bdin:focus{border-color:var(--olive)}
   .strow:last-child{border-bottom:0}
   .form input,.form textarea{width:100%;border:1.5px solid transparent;background:var(--cream);border-radius:12px;padding:11px 12px;outline:none;margin-top:6px}
-  .form input:focus,.form textarea:focus{border-color:var(--olive);background:#fff}
+  .form input:focus,.form textarea:focus{border-color:var(--olive);background:var(--focus)}
   .form label{display:block;margin-top:12px;font-size:13px;color:var(--muted);font-weight:500}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .task{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
@@ -179,7 +193,7 @@
   .shift{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
   .shift:last-child{border-bottom:0}
   .shift .ava{position:relative}
-  .shift.now .ava::after{content:"";position:absolute;right:-1px;bottom:-1px;width:11px;height:11px;border-radius:50%;background:#3FA34D;border:2px solid #fff}
+  .shift.now .ava::after{content:"";position:absolute;right:-1px;bottom:-1px;width:11px;height:11px;border-radius:50%;background:#3FA34D;border:2px solid var(--card)}
   .shift.past{opacity:.5}
   .time{font-weight:600;white-space:nowrap;font-size:15px}
   .mini{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--olive-soft);margin-left:6px;vertical-align:1px}
@@ -207,7 +221,7 @@
   .edit{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
   .edit .top{display:flex;gap:8px;align-items:center}
   .edit input{width:100%;border:1.5px solid transparent;background:var(--cream);border-radius:10px;padding:10px 12px;outline:none}
-  .edit input:focus{border-color:var(--olive);background:#fff}
+  .edit input:focus{border-color:var(--olive);background:var(--focus)}
   .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
   .grid3 label{font-size:12px;color:var(--muted);display:block}
   .grid3 input{margin-top:3px;text-align:center}
@@ -218,7 +232,7 @@
   .chip.on::before{content:"✓ "}
   .badge{display:inline-block;background:var(--olive-soft);border-radius:999px;padding:4px 10px;font-size:14px;margin:3px 4px 3px 0}
   textarea{width:100%;border:1.5px solid transparent;background:var(--cream);border-radius:12px;padding:10px 12px;outline:none;resize:vertical}
-  textarea:focus{border-color:var(--olive);background:#fff}
+  textarea:focus{border-color:var(--olive);background:var(--focus)}
   .user{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
   .user:last-child{border-bottom:0}
   .ava{width:36px;height:36px;border-radius:50%;background:var(--olive);color:var(--forest);display:grid;place-items:center;font-weight:600;flex:0 0 auto}
@@ -231,6 +245,11 @@
   .loader{display:grid;place-items:center;min-height:60vh;gap:14px;color:var(--muted)}
   .loader img{width:84px;height:84px;border-radius:50%;animation:pulse 1.4s ease-in-out infinite}
   @keyframes pulse{50%{transform:scale(.92);opacity:.7}}
+  #pull{position:fixed;top:4px;left:50%;width:36px;height:36px;margin-top:0;border-radius:50%;background:var(--card);box-shadow:0 4px 14px rgba(0,0,0,.18);z-index:15;opacity:0;transform:translate(-50%,0);pointer-events:none;display:grid;place-items:center;transition:opacity .15s}
+  #pull::after{content:"↻";font-size:20px;color:var(--olive);font-weight:700}
+  #pull.ready::after{color:var(--forest)}
+  #pull.spin{animation:pspin .8s linear infinite}
+  @keyframes pspin{from{transform:translate(-50%,40px) rotate(0)}to{transform:translate(-50%,40px) rotate(360deg)}}
   #toast{position:fixed;left:16px;right:16px;bottom:90px;background:var(--forest);color:var(--cream);padding:13px 16px;border-radius:14px;opacity:0;transform:translateY(16px);transition:.25s;pointer-events:none;z-index:9;text-align:center;font-weight:500}
   #toast.show{opacity:1;transform:none}
 </style>
@@ -252,6 +271,7 @@ const toNum = v => { const s = String(v).trim().replace(',', '.'); return s === 
 const ICONS = ['🍯','🍋','🫙','🧴','🍓','🌿','🥛','🍊','🫐','🍵'];
 const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % ICONS.length];
 
+let homeData = null, homeP = null, probPhotos = [];
 let orderDraft = {}, taskData = null, evData = null, taskForm = { mode: 'all', statuses: [], ids: [] }, evForm = { mode: 'all', statuses: [], ids: [] };
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
 let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
@@ -263,6 +283,11 @@ async function call(action, payload) {
   const j = await r.json();
   if (j.error) throw new Error(j.error);
   return j;
+}
+function applyTheme() {
+  const dark = tg && tg.colorScheme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  try { tg.setHeaderColor('#96A466'); tg.setBackgroundColor(dark ? '#0E1611' : '#FAFBEF'); } catch (e) {}
 }
 async function post(action, payload) {
   const r = await fetch(API, { method: 'POST', body: JSON.stringify({ action, initData: tg.initData, payload }) });
@@ -478,6 +503,29 @@ async function openTkForPrep(pid, amount) {
   catch (e) { toast(e.message); }
 }
 
+// ---- черновик закрытия (переживает закрытие приложения) ----
+const DRAFT_KEY = 'rassvet_close_draft';
+let draftTimer = null;
+function saveDraft() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    const data = { ts: Date.now(), checks: [...checks], draft, photos: photos.filter(p => p.id).map(p => ({ id: p.id, src: p.src })) };
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(data)); }
+    catch (e) { try { data.photos = data.photos.map(p => ({ id: p.id, src: '' })); localStorage.setItem(DRAFT_KEY, JSON.stringify(data)); } catch (e2) {} }
+  }, 300);
+}
+function loadDraft() {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+    if (!d || Date.now() - d.ts > 10 * 3600e3) return false;
+    (d.checks || []).forEach(k => checks.add(k));
+    Object.assign(draft, d.draft || {});
+    photos = (d.photos || []).map(p => ({ id: p.id, src: p.src || LOGO }));
+    return checks.size || Object.keys(draft).length || photos.length;
+  } catch (e) { return false; }
+}
+function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
+
 function photosGrid() {
   return photos.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${p.src}" alt="" data-ph="${k}"><button class="x" data-phdel="${k}">×</button></div>`).join('') +
     (photos.length < 10 ? `<label class="ph add" for="phinput"><span><b>+</b>Фото</span></label>` : '');
@@ -485,7 +533,7 @@ function photosGrid() {
 function bindPhotos() {
   const grid = document.getElementById('phgrid'); if (!grid) return;
   const redraw = () => { grid.innerHTML = photosGrid(); bindPhotos(); };
-  grid.querySelectorAll('[data-phdel]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.phdel, 1); redraw(); });
+  grid.querySelectorAll('[data-phdel]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.phdel, 1); redraw(); saveDraft(); });
   grid.querySelectorAll('[data-ph]').forEach(im => im.onclick = () => lightbox(im.src));
   const inp = document.getElementById('phinput');
   inp.onchange = async () => {
@@ -495,7 +543,7 @@ function bindPhotos() {
       try { p = { src: await compress(f), loading: true }; } catch (e) { toast(e.message); continue; }
       photos.push(p); redraw();
       post('photoUpload', { data: p.src })
-        .then(r => { p.id = r.id; p.loading = false; })
+        .then(r => { p.id = r.id; p.loading = false; saveDraft(); })
         .catch(e => { toast('Фото не загрузилось: ' + e.message); photos.splice(photos.indexOf(p), 1); })
         .finally(() => { if (document.getElementById('phgrid')) redraw(); });
     }
@@ -535,6 +583,109 @@ function loadShift(date) {
   if (!shiftLoading[date]) shiftLoading[date] = call('shiftDay', { date }).then(r => (shiftCache[date] = r.list)).catch(e => { delete shiftLoading[date]; throw e; });
   return shiftLoading[date];
 }
+// ---- «Мои смены», замены, проблемы, дни рождения ----
+function getHome(force) {
+  if (homeData && !force) return Promise.resolve(homeData);
+  if (!homeP || force) homeP = call('home').then(r => (homeData = r)).catch(e => { homeP = null; throw e; });
+  return homeP;
+}
+const hmS = m => Math.floor(m / 60) % 24 + ':' + String(m % 60).padStart(2, '0');
+function homeExtraHtml(d) {
+  let out = '';
+  const today = me.today.date;
+  // мои смены на 7 дней
+  if (d.week && d.week.length && !me.isViewer) {
+    const mySwap = date => (d.swaps || []).find(w => w.mine && w.date === date);
+    out += card(`<h2>Мои смены</h2><p class="sub">Ближайшие 7 дней</p>` + d.week.map(w => {
+      const dt = new Date(w.date + 'T12:00:00Z'), lbl = w.date === today ? 'сегодня' : dt.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+      const right = w.none ? '<span class="sub" style="margin:0">график в процессе</span>' : w.off ? '<span class="mini">выходной</span>'
+        : `<span class="time">${hmS(w.from)} – ${hmS(w.to)}</span>`;
+      const sw = mySwap(w.date);
+      const act = !w.none && !w.off && w.date > today ? (sw ? `<span class="mini" style="background:var(--warm-soft);color:var(--warm)">${sw.status === 'taken' ? 'замена: ' + esc(sw.takerName) : 'ищем замену'}</span>`
+        : `<button class="tkbtn" data-swap="${w.date}" style="margin-left:6px">Замена</button>`) : '';
+      return `<div class="shift ${w.off || w.none ? 'past' : ''}"><div class="pname"><b style="text-transform:capitalize">${lbl}</b>${w.role ? `<span>${esc(w.role)}</span>` : ''}</div>${right}${act}</div>`;
+    }).join(''));
+  }
+  // кто ищет замену
+  const others = (d.swaps || []).filter(w => !w.mine || me.isAdmin);
+  if (others.length) out += card(`<h2>🔄 Ищут замену</h2>` + others.map(w => `<div class="shift"><div class="pname"><b>${esc(w.byName)}</b>
+      <span>${new Date(w.date + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })} · ${hmS(w.from)}–${hmS(w.to)}${w.status === 'taken' ? ' · берёт ' + esc(w.takerName) : ''}</span></div>
+      ${w.status === 'open' && !w.mine && !me.isViewer ? `<button class="tkbtn" data-take="${esc(w.id)}">🙋 Возьму</button>` : ''}
+      ${w.mine || me.isAdmin ? `<button class="x" data-swcancel="${esc(w.id)}">×</button>` : ''}</div>`).join(''));
+  // дни рождения на неделю вперёд
+  const bd = d.bdays || {}, soon = [];
+  for (let i = 0; i < 8; i++) { const dd = addD(today, i), md = dd.slice(5); Object.keys(bd).forEach(n => { if (bd[n] === md) soon.push([n, i, dd]); }); }
+  if (soon.length) out += card(`<h2>🎂 Дни рождения</h2>` + soon.map(([n, i, dd]) => `<div class="shift"><div class="ava">🎂</div><div class="pname"><b>${esc(n)}</b>
+      <span>${i === 0 ? '<b style="color:var(--warm)">сегодня! поздравь 🎉</b>' : i === 1 ? 'завтра' : new Date(dd + 'T12:00:00Z').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' })}</span></div></div>`).join(''));
+  // проблемы
+  const pr = d.probs || [];
+  out += card(`<h2>⚠️ Проблемы</h2><p class="sub">${pr.length ? 'Открытые — ждут решения' : 'Что-то сломалось или закончилось? Сообщи — админ сразу узнает'}</p>` +
+    pr.map(p => `<div class="task"><div class="pname"><b>${esc(p.text)}</b><span>${esc(p.byName)} · ${fmtTs(p.at)}${p.photos ? ' · 📷 ' + p.photos : ''}</span></div>
+      ${me.canCreate ? `<button class="tkbtn" data-pdone="${esc(p.id)}">✅ Решено</button>` : ''}</div>`).join('') +
+    (me.orderer && !me.isAdmin ? '' : `<button class="btn soft" id="probBtn">⚠️ Сообщить о проблеме</button>`));
+  return out;
+}
+function bindHomeExtra() {
+  const box = document.getElementById('homeExtra'); if (!box) return;
+  const fill = d => {
+    if (!document.getElementById('homeExtra')) return;
+    box.innerHTML = homeExtraHtml(d);
+    box.querySelectorAll('[data-swap]').forEach(b => b.onclick = async () => {
+      const date = b.dataset.swap;
+      if (!(await confirmBox('Найти замену на ' + new Date(date + 'T12:00:00Z').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' }) + '? В группу уйдёт сообщение, кто-нибудь сможет взять твою смену.'))) return;
+      b.disabled = true;
+      try { await call('swapAsk', { date }); toast('Запрос отправлен в группу 🔄'); fill(await getHome(true)); } catch (e) { toast(e.message); b.disabled = false; }
+    });
+    box.querySelectorAll('[data-take]').forEach(b => b.onclick = async () => {
+      if (!(await confirmBox('Взять эту смену? Админ подтвердит замену.'))) return;
+      b.disabled = true;
+      try { await call('swapTake', { id: b.dataset.take }); haptic('success'); toast('Отлично! Ждём подтверждения 🙌'); fill(await getHome(true)); } catch (e) { toast(e.message); b.disabled = false; }
+    });
+    box.querySelectorAll('[data-swcancel]').forEach(b => b.onclick = async () => {
+      if (!(await confirmBox('Отменить поиск замены?'))) return;
+      try { await call('swapCancel', { id: b.dataset.swcancel }); fill(await getHome(true)); } catch (e) { toast(e.message); }
+    });
+    box.querySelectorAll('[data-pdone]').forEach(b => b.onclick = async () => {
+      if (!(await confirmBox('Отметить проблему решённой? Автор получит уведомление.'))) return;
+      try { await call('probDone', { id: b.dataset.pdone }); haptic('success'); fill(await getHome(true)); } catch (e) { toast(e.message); }
+    });
+    const pb = document.getElementById('probBtn'); if (pb) pb.onclick = () => openProblem(() => getHome(true).then(fill));
+  };
+  if (homeData) fill(homeData); else box.innerHTML = card('<div class="wip">Загружаю…</div>');
+  getHome(!!homeData).then(fill).catch(() => {});
+}
+function openProblem(done) {
+  closeSheet(); probPhotos = [];
+  const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+  const grid = () => probPhotos.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${p.src}" alt=""><button class="x" data-pp="${k}">×</button></div>`).join('') +
+    (probPhotos.length < 3 ? `<label class="ph add" for="ppinput"><span><b>+</b>Фото</span></label>` : '');
+  wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>⚠️ Сообщить о проблеме</h2>
+    <p class="sub" style="margin-top:4px">Что сломалось, закончилось или мешает работе. Админ получит сразу</p>
+    <div class="form"><textarea id="pText" rows="3" placeholder="Например: кофемолка №2 мелет неравномерно"></textarea></div>
+    <div class="photos" id="ppgrid">${grid()}</div><input type="file" id="ppinput" accept="image/*" multiple style="display:none">
+    <button class="btn" id="pSend">Отправить</button><button class="btn soft" id="closeSheet">Отмена</button></div>`;
+  document.body.appendChild(wrap);
+  const redraw = () => { wrap.querySelector('#ppgrid').innerHTML = grid(); wrap.querySelectorAll('[data-pp]').forEach(b => b.onclick = () => { probPhotos.splice(+b.dataset.pp, 1); redraw(); }); };
+  wrap.querySelector('#closeSheet').onclick = closeSheet;
+  wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+  wrap.querySelector('#ppinput').onchange = async e => {
+    const files = [...e.target.files].slice(0, 3 - probPhotos.length); e.target.value = '';
+    for (const f of files) {
+      let p; try { p = { src: await compress(f), loading: true }; } catch (er) { toast(er.message); continue; }
+      probPhotos.push(p); redraw();
+      post('probPhoto', { data: p.src }).then(r => { p.id = r.id; p.loading = false; }).catch(er => { toast('Фото не загрузилось'); probPhotos.splice(probPhotos.indexOf(p), 1); }).finally(redraw);
+    }
+  };
+  wrap.querySelector('#pSend').onclick = async ev => {
+    const text = wrap.querySelector('#pText').value.trim();
+    if (!text) return toast('Опиши проблему');
+    if (probPhotos.some(p => p.loading)) return toast('Подожди, фото загружаются…');
+    ev.target.disabled = true; ev.target.textContent = 'Отправляю…';
+    try { await call('probAdd', { text, photos: probPhotos.filter(p => p.id).map(p => p.id) }); haptic('success'); toast('Отправлено, спасибо! 🙏'); closeSheet(); done && done(); }
+    catch (e) { toast(e.message); ev.target.disabled = false; ev.target.textContent = 'Отправить'; }
+  };
+}
+
 function shiftCard() {
   const today = me.today.date;
   if (!curDay) curDay = today;
@@ -558,7 +709,7 @@ function dayRows(date, list) {
     const cls = isToday ? (now >= x.from && now < x.to ? 'now' : now >= x.to ? 'past' : '') : '';
     const sub = isToday ? (cls === 'now' ? 'сейчас на смене' : cls === 'past' ? 'смена закончилась' : 'придёт в ' + t(x.from)) : (x.from < 12 * 60 ? 'утро' : 'вечер');
     return `<div class="shift ${cls}"><div class="ava">${esc(String(x.name)[0] || '?')}</div>
-      <div class="pname"><b>${esc(x.name)}${x.name === me.name ? ' <span class="mini">ты</span>' : ''}${stBadge(statusOf(x.name))}${x.role ? `<span class="mini">${esc(x.role)}</span>` : ''}${x.to >= 22 * 60 ? '<span class="mini close">закрывает</span>' : ''}</b>
+      <div class="pname"><b>${esc(x.name)}${x.name === me.name ? ' <span class="mini">ты</span>' : ''}${homeData && (homeData.bdays || {})[x.name] === date.slice(5) ? ' 🎂' : ''}${stBadge(statusOf(x.name))}${x.role ? `<span class="mini">${esc(x.role)}</span>` : ''}${x.to >= 22 * 60 ? '<span class="mini close">закрывает</span>' : ''}</b>
       <span>${sub}</span></div><span class="time">${t(x.from)} – ${t(x.to)}</span></div>`;
   }).join('');
 }
@@ -643,7 +794,7 @@ const views = {
   async today() {
     const t = me.today, made = t.made || {};
     const hasTk = pid => { const p = me.preps.find(x => x.id === pid); return p && p.tk; };
-    let out = shiftCard();
+    let out = shiftCard() + '<div id="homeExtra"></div>';
     const ro = me.isViewer;
     if (t.items.length) {
       const rows = ro ? t.items.map(i => made[i.pid] ? `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>сварил(а) ${esc(made[i.pid])}</span></div></div>` : needRow(i)).join('') : t.items.map(i => made[i.pid]
@@ -752,7 +903,13 @@ const views = {
         </div>
       </div>`).join('');
     const cl = cfg.checklist || [];
-    return card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. Техкарта — рецепт из таблицы, выход для пересчёта берётся из строки «Выход» в техкарте.</p>
+    let usage = '';
+    try { const u = (await call('usage')).items;
+      usage = card(`<h2>📈 Расход заготовок</h2><p class="sub">Сколько уходит за день — по истории подсчётов и отметкам «сварил»</p>` + u.map(x => `<div class="strow"><b>${esc(x.name)}</b>
+        <div class="sub" style="margin:4px 0 0">${x.n < 3 ? 'Мало данных — нужно ещё несколько закрытий' : `будни ≈ <b>${x.wd != null ? fmt(x.wd) + ' ' + esc(x.unit) : '—'}</b> · пт–вс ≈ <b>${x.we != null ? fmt(x.we) + ' ' + esc(x.unit) : '—'}</b> · норма ${fmt(x.norm)} ${esc(x.unit)}`}</div>
+        ${x.hint && x.n >= 3 ? `<div style="margin-top:6px;color:var(--warm);font-size:14px">💡 ${esc(x.hint)}</div>` : ''}</div>`).join(''));
+    } catch (e) {}
+    return usage + card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. Техкарта — рецепт из таблицы, выход для пересчёта берётся из строки «Выход» в техкарте.</p>
       ${rows || ''}<button class="btn soft" id="add">+ Добавить заготовку</button>`) +
       card(`<h2>Чек-лист закрытия</h2><p class="sub">Пункты, которые отмечают на закрытии смены</p><div id="cl">` +
         cl.map((t, k) => `<div class="cl-row edit" style="padding:8px;margin-bottom:8px"><input data-cl value="${esc(t)}" placeholder="Например: почистить кофемашину"><button class="x" data-cldel="${k}">×</button></div>`).join('') +
@@ -775,7 +932,7 @@ const views = {
     const sts = cfg.statuses || {};
     const stNames = (cfg.schedule || []).filter(n => (cfg.off || []).indexOf(n) < 0).concat(cfg.extra || []);
     const statusCard = card(`<h2>Статусы</h2><p class="sub">Нажми на статус — сохраняется сразу. Цвет видно на главном экране</p>` +
-      stNames.map(n => `<div class="strow"><b>${esc(n)}</b> ${stBadge(sts[n])}<div class="seg">${ST_LIST.map((st, k) => `<button data-stname="${esc(n)}" data-st="${st}" class="${sts[n] === st ? 'on st' + k : ''}">${ST_LABEL[st]}</button>`).join('')}</div></div>`).join(''));
+      stNames.map(n => `<div class="strow"><b>${esc(n)}</b> ${stBadge(sts[n])}<label style="float:right;font-size:13px;color:var(--muted)">🎂 <input class="bdin" data-bd="${esc(n)}" placeholder="дд.мм" inputmode="numeric" maxlength="5" value="${(cfg.bdays || {})[n] ? cfg.bdays[n].slice(3) + '.' + cfg.bdays[n].slice(0, 2) : ''}"></label><div class="seg">${ST_LIST.map((st, k) => `<button data-stname="${esc(n)}" data-st="${st}" class="${sts[n] === st ? 'on st' + k : ''}">${ST_LABEL[st]}</button>`).join('')}</div></div>`).join(''));
     const usersCard = card(`<h2>Подключены к боту</h2><p class="sub">«🛡 Админ» — видит историю закрытий и фото, ставит задачи и создаёт события. Заготовки, команду и закрытие смены менять не может</p>${users}`);
     return card(`<h2>Команда бара</h2><p class="sub">Все из графика этого месяца попадают сюда сами. Новый человек в графике — появится тут, убрали из графика — пропадёт. Нажми на имя, чтобы выключить того, кто не работает в баре.</p><div class="chips">${chips}</div>
         <h3>Добавить вручную</h3><p class="sub">Если человека нет в графике</p>${extra}
@@ -788,7 +945,7 @@ const views = {
 
   async history() {
     if (!hist) hist = (await call('history')).items;
-    const rep = me.isAdmin ? card(`<h2>🏆 Итоги 2 недель</h2><p class="sub">Рейтинг, кто сколько заготовок сварил. Приходит в группу сам раз в 2 недели в понедельник в 12:00</p><button class="btn soft" id="reportNow">Отправить итоги сейчас</button>`) : '';
+    const rep = me.isAdmin ? card(`<h2>🏆 Итоги 2 недель</h2><p class="sub">Рейтинг, кто сколько заготовок сварил. Приходит в группу сам раз в 2 недели в понедельник в 12:00</p><button class="btn soft" id="reportNow">Отправить итоги сейчас</button><button class="btn soft" id="weekNow" style="margin-top:8px">📊 Сводка недели мне в личку</button>`) : '';
     if (!hist.length) return rep + empty('📜', 'Закрытий пока нет', 'Здесь появится история каждого закрытия смены.');
     const day = d => new Date(d + 'T12:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
     return rep + card(`<h2>История закрытий</h2><p class="sub">Последние 45 дней. Нажми, чтобы посмотреть подробно</p>`) +
@@ -816,7 +973,7 @@ const binds = {
     document.querySelectorAll('[data-ci]').forEach(el => el.onclick = () => {
       const k = +el.dataset.ci;
       if (checks.has(k)) checks.delete(k); else checks.add(k);
-      el.classList.toggle('on', checks.has(k));
+      el.classList.toggle('on', checks.has(k)); saveDraft();
       document.getElementById('clt').textContent = `Отмечено ${checks.size} из ${cl.length}`;
       try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
     });
@@ -827,7 +984,7 @@ const binds = {
       document.getElementById('progt').textContent = `Заполнено ${filled} из ${inputs.length}`;
     };
     inputs.forEach(i => i.oninput = () => {
-      draft[i.dataset.id] = i.value;
+      draft[i.dataset.id] = i.value; saveDraft();
       const row = i.closest('.prow'), v = toNum(i.value);
       row.classList.toggle('low', v !== '' && !isNaN(v) && v < Number(row.dataset.min));
       upd();
@@ -843,12 +1000,13 @@ const binds = {
       if (miss > 0 && !(await confirmBox(`В чек-листе не отмечено пунктов: ${miss}. Всё равно закрыть смену?`))) return;
       if (emptyN && !(await confirmBox(`Не заполнено остатков: ${emptyN}. Отправить так?`))) return;
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id) }); draft = {}; checks.clear(); photos = []; hist = null; me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); }
+      try { lastResult = await call('count', { values, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id) }); draft = {}; checks.clear(); photos = []; hist = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
   today() {
     bindShift();
+    bindHomeExtra();
     document.querySelectorAll('[data-tk]').forEach(b => b.onclick = e => { e.stopPropagation(); openTkForPrep(b.dataset.tk, toNum(b.dataset.amt)); });
     const btn = document.getElementById('made'); if (!btn) return;
     const sync = () => { btn.disabled = !sel.size; btn.textContent = sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'; };
@@ -905,6 +1063,12 @@ const binds = {
       catch (err) { toast(err.message); }
       e.target.disabled = false;
     };
+    document.querySelectorAll('[data-bd]').forEach(inp => inp.onchange = async () => {
+      const m = inp.value.trim().match(/^(\d{1,2})[.\/-](\d{1,2})$/);
+      if (inp.value.trim() && !m) return toast('Дата в формате дд.мм, например 21.10');
+      const date = m ? String(m[2]).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0') : '';
+      try { const r = await call('setBirthday', { name: inp.dataset.bd, date }); cfg.bdays = r.bdays; if (homeData) homeData.bdays = r.bdays; toast(date ? 'День рождения сохранён 🎂' : 'Удалено'); } catch (e) { toast(e.message); }
+    });
     document.querySelectorAll('[data-stname]').forEach(b => b.onclick = async () => {
       const name = b.dataset.stname, st = (cfg.statuses || {})[name] === b.dataset.st ? '' : b.dataset.st;
       try { const r = await call('setStatus', { name, status: st }); cfg.statuses = r.statuses; me.statuses = r.statuses; try { tg.HapticFeedback.selectionChanged(); } catch (e) {} render(); } catch (e) { toast(e.message); }
@@ -981,6 +1145,8 @@ const binds = {
     };
   },
   history() {
+    const wb = document.getElementById('weekNow');
+    if (wb) wb.onclick = async () => { wb.disabled = true; try { await call('weekNow'); toast('Сводка отправлена тебе в личку 📊'); } catch (e) { toast(e.message); } wb.disabled = false; };
     const rb = document.getElementById('reportNow');
     if (rb) rb.onclick = async () => {
       if (!(await confirmBox('Отправить в группу итоги заготовок за последние 2 недели?'))) return;
@@ -1007,19 +1173,54 @@ const binds = {
   }
 };
 
+// ---- обновление свайпом вниз ----
+async function refreshAll() {
+  taskData = evData = homeData = hist = cfg = tkCards = null; cfgP = tkP = null;
+  Object.keys(shiftCache).forEach(k => delete shiftCache[k]); Object.keys(shiftLoading).forEach(k => delete shiftLoading[k]);
+  me = await call('me'); render(); prefetch();
+}
+function initPull() {
+  const ind = document.createElement('div'); ind.id = 'pull'; document.body.appendChild(ind);
+  let y0 = null, dy = 0, busy = false;
+  window.addEventListener('touchstart', e => { if (window.scrollY <= 0 && !document.getElementById('sheet') && !busy) { y0 = e.touches[0].clientY; dy = 0; } }, { passive: true });
+  window.addEventListener('touchmove', e => {
+    if (y0 == null) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy <= 0) { ind.style.opacity = 0; return; }
+    const k = Math.min(dy, 120);
+    ind.style.opacity = Math.min(1, k / 70); ind.style.transform = `translate(-50%, ${k * 0.6}px) rotate(${k * 3}deg)`;
+    ind.classList.toggle('ready', dy > 80);
+  }, { passive: true });
+  window.addEventListener('touchend', async () => {
+    if (y0 == null) return; y0 = null;
+    if (dy > 80) {
+      busy = true; ind.classList.add('spin'); ind.style.transform = 'translate(-50%, 40px)';
+      try { await refreshAll(); toast('Обновлено ✨'); } catch (e) { toast(e.message); }
+      busy = false; ind.classList.remove('spin');
+    }
+    ind.style.opacity = 0; ind.style.transform = 'translate(-50%, 0)'; ind.classList.remove('ready');
+  });
+}
+
 (async function init() {
   const fail = (ic, t, s) => app.innerHTML = `<main style="padding-top:40px">${empty(ic, t, s)}</main>`;
   if (!tg || !tg.initData) return fail('📱', 'Открой через бота', 'Приложение работает только внутри Телеграма.');
   tg.ready(); tg.expand();
-  try { tg.setHeaderColor('#96A466'); tg.setBackgroundColor('#FAFBEF'); } catch (e) {}
+  applyTheme();
+  try { tg.onEvent('themeChanged', applyTheme); } catch (e) {}
+  try { tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch (e) {}
   if (!API) return fail('🔌', 'Нет адреса сервера', 'Открой приложение кнопкой в боте.');
   try {
     me = await call('me');
+    const restored = me.canClose && loadDraft();
     const h = new Date().getHours();
     if (me.canClose && !me.isViewer && (h >= 20 || h < 3)) tab = 'count';
     if (me.orderer && !me.isAdmin) tab = 'order';
+    if (restored) tab = 'count';
     render();
     prefetch();
+    if (restored) setTimeout(() => toast('Черновик закрытия восстановлен ✍️'), 400);
+    initPull();
   } catch (e) { fail('🔒', esc(e.message), ''); }
 })();
 </script>
