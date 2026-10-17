@@ -268,6 +268,7 @@ const views = {
         (items.length ? `<h3>Завтра нужно сварить</h3>` + items.map(needRow).join('') : `<div class="status"><span class="big">🌿</span>Всего хватает — завтра варить не нужно</div>`) +
         `<button class="btn soft" id="again">Изменить подсчёт</button>`);
     }
+    if (me.canClose === false) return empty('🌿', 'Ты не на смене, отдыхай', (me.closers && me.closers.length) ? 'Сегодня смену закрывает: ' + me.closers.map(esc).join(', ') : 'Смену закрывает вечерняя смена.');
     if (!me.preps.length) return empty('🫙', 'Заготовок пока нет', me.isAdmin ? 'Добавь их во вкладке «Заготовки».' : 'Администратор ещё не добавил список.');
     const rows = me.preps.map(p => {
       const v = draft[p.id] != null ? draft[p.id] : '';
