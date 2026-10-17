@@ -227,7 +227,7 @@ async function getCfg() { if (cfg) return cfg; cfgP = cfgP || call('config').the
 async function getNames() { if (names) return names; namesP = namesP || call('names').then(r => names = r.names).catch(e => { namesP = null; throw e; }); return namesP; }
 function prefetch() {
   getTk().catch(() => {});
-  if (me.isAdmin) { getCfg().catch(() => {}); getNames().catch(() => {}); }
+  if (me.isAdmin) getCfg().catch(() => {});
 }
 const q = x => { x = Number(x); if (!isFinite(x)) return '—'; return fmt(x >= 20 ? Math.round(x) : x >= 1 ? Math.round(x * 10) / 10 : Math.round(x * 100) / 100); };
 // перевод единиц: л↔мл, кг↔г
@@ -425,15 +425,17 @@ const views = {
 
   async staff() {
     await getCfg();
-    await getNames();
-    const all = names.concat(cfg.staff.filter(s => names.indexOf(s) < 0));
-    const chips = all.map(n => `<button class="chip ${cfg.staff.indexOf(n) >= 0 ? 'on' : ''}" data-name="${esc(n)}">${esc(n)}</button>`).join('');
+    const off = cfg.off || [];
+    const chips = (cfg.schedule || []).map(n => `<button class="chip ${off.indexOf(n) < 0 ? 'on' : ''}" data-name="${esc(n)}">${esc(n)}</button>`).join('') || '<p class="sub">В графике этого месяца никого не нашёл</p>';
+    const extra = (cfg.extra || []).map((n, k) => `<div class="user"><div class="ava">${esc(n[0] || '?')}</div><div class="pname"><b>${esc(n)}</b><span>добавлен вручную</span></div><button class="x" data-xdel="${k}">×</button></div>`).join('');
     const users = cfg.users.length
       ? cfg.users.map(u => `<div class="user"><div class="ava">${esc(String(u.name)[0] || '?')}</div><div class="pname"><b>${esc(u.name)}</b><span>ID ${esc(u.id)}</span></div><button class="x" data-rm="${esc(u.id)}">×</button></div>`).join('')
       : '<p class="sub">Пока никто не зарегистрировался. Скинь команде ссылку на бота.</p>';
     const badges = list => list && list.length ? list.map(n => `<span class="badge">${esc(n)}</span>`).join('') : '<span class="sub">никого</span>';
     const whoHtml = who ? `<h3>Заготовки 14:00–15:30</h3>${badges(who.prep)}<h3>Подсчёт в ${esc(who.countAt)}</h3>${badges(who.count)}` : '';
-    return card(`<h2>Кто работает в баре</h2><p class="sub">Нажми на имена барменов. Имена берутся из графика этого месяца.</p><div class="chips">${chips}</div>
+    return card(`<h2>Команда бара</h2><p class="sub">Все из графика этого месяца попадают сюда сами. Новый человек в графике — появится тут, убрали из графика — пропадёт. Нажми на имя, чтобы выключить того, кто не работает в баре.</p><div class="chips">${chips}</div>
+        <h3>Добавить вручную</h3><p class="sub">Если человека нет в графике</p>${extra}
+        <div class="cl-row" style="margin-top:8px"><input id="newName" placeholder="Имя" style="min-width:0;flex:1;border:1.5px solid transparent;background:var(--cream);border-radius:10px;padding:10px 12px;outline:none"><button class="tkbtn" id="addName" style="padding:10px 14px;flex:0 0 auto">Добавить</button></div>
         <h3>Статусы «не в баре»</h3><textarea id="exclude" rows="3">${esc(cfg.exclude.join(', '))}</textarea>
         <button class="btn" id="saveStaff">Сохранить</button>`) +
       card(`<h2>Подключены к боту</h2>${users}`) +
@@ -534,11 +536,17 @@ const binds = {
   },
   staff() {
     document.querySelectorAll('.chip').forEach(c => c.onclick = () => c.classList.toggle('on'));
+    const readOff = () => { cfg.off = [...document.querySelectorAll('.chip:not(.on)')].map(c => c.dataset.name); };
+    document.getElementById('addName').onclick = () => {
+      const v = document.getElementById('newName').value.trim(); if (!v) return;
+      readOff(); cfg.extra = (cfg.extra || []).concat([v]); render();
+    };
+    document.querySelectorAll('[data-xdel]').forEach(b => b.onclick = () => { readOff(); cfg.extra.splice(+b.dataset.xdel, 1); render(); });
     document.getElementById('saveStaff').onclick = async e => {
-      const staff = [...document.querySelectorAll('.chip.on')].map(c => c.dataset.name);
+      readOff();
       const exclude = document.getElementById('exclude').value.split(',').map(s => s.trim()).filter(Boolean);
       e.target.disabled = true;
-      try { await call('saveStaff', { staff, exclude }); cfg.staff = staff; cfg.exclude = exclude; toast('Сохранено ✅'); haptic('success'); }
+      try { await call('saveStaff', { off: cfg.off, extra: cfg.extra || [], exclude }); cfg.exclude = exclude; toast('Сохранено ✅'); haptic('success'); }
       catch (err) { toast(err.message); }
       e.target.disabled = false;
     };
