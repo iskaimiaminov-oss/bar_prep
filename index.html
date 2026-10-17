@@ -123,6 +123,37 @@
   .cl-row{display:flex;gap:8px;margin-bottom:8px}
   .cl-row input{flex:1}
 
+  /* ---------- статусы ---------- */
+  .stb{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:1px;white-space:nowrap}
+  .st0{background:#DCE6F0;color:#3B5872}
+  .st1{background:#E1EBC9;color:#4C5E1F}
+  .st2{background:#F6E1BE;color:#8A5414}
+  .st3{background:#0A3320;color:#F2F5CF}
+  .seg{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .seg button{border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:6px 11px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted)}
+  .seg button.on{border-color:transparent}
+  .seg button.on.st0{background:#DCE6F0;color:#3B5872}
+  .seg button.on.st1{background:#E1EBC9;color:#4C5E1F}
+  .seg button.on.st2{background:#F6E1BE;color:#8A5414}
+  .seg button.on.st3{background:#0A3320;color:#F2F5CF}
+  .strow{padding:10px 0;border-bottom:1px solid var(--line)}
+  .strow:last-child{border-bottom:0}
+  .form input,.form textarea{width:100%;border:1.5px solid transparent;background:var(--cream);border-radius:12px;padding:11px 12px;outline:none;margin-top:6px}
+  .form input:focus,.form textarea:focus{border-color:var(--olive);background:#fff}
+  .form label{display:block;margin-top:12px;font-size:13px;color:var(--muted);font-weight:500}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .task{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .task:last-child{border-bottom:0}
+  .task .box{margin-top:2px;cursor:pointer}
+  .task.done b{text-decoration:line-through;opacity:.55}
+  .task.done .box{background:var(--olive);border-color:var(--olive);color:var(--forest)}
+  .ev{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .ev:last-child{border-bottom:0}
+  .evd{flex:0 0 56px;height:60px;border-radius:14px;background:var(--forest);color:var(--cream);display:grid;place-items:center;text-align:center;line-height:1.05}
+  .evd b{font-size:22px;display:block}
+  .evd small{font-size:11px;text-transform:uppercase;opacity:.8}
+  .tabcount{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--warm);color:#fff;font-size:11px;margin-left:5px;vertical-align:1px}
+
   /* ---------- смена ---------- */
   .shift{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
   .shift:last-child{border-bottom:0}
@@ -200,7 +231,7 @@ const toNum = v => { const s = String(v).trim().replace(',', '.'); return s === 
 const ICONS = ['🍯','🍋','🫙','🧴','🍓','🌿','🥛','🍊','🫐','🍵'];
 const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % ICONS.length];
 
-let orderDraft = {};
+let orderDraft = {}, taskData = null, evData = null, taskForm = { mode: 'all', statuses: [], ids: [] }, evForm = { mode: 'all', statuses: [], ids: [] };
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
 let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
@@ -257,8 +288,9 @@ function header() {
 }
 function tabsList() {
   if (me.orderer && !me.isAdmin) return [['order', 'Заказ']];
-  if (me.isViewer) return [['today', 'Сегодня'], ['tk', 'Техкарты'], ['history', 'История']];
-  const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['tk', 'Техкарты']];
+  const tasksLbl = 'Задачи' + (me.openTasks ? `<span class="tabcount">${me.openTasks}</span>` : '');
+  if (me.isViewer) return [['today', 'Сегодня'], ['tasks', tasksLbl], ['events', 'События'], ['history', 'История'], ['tk', 'Техкарты']];
+  const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['tasks', tasksLbl], ['events', 'События'], ['tk', 'Техкарты']];
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
   return t;
 }
@@ -440,6 +472,27 @@ function bindPhotos() {
   };
 }
 
+const ST_LIST = ['стажер', 'бариста', 'про бариста', 'старший бариста'];
+const ST_LABEL = { 'стажер': 'Стажёр', 'бариста': 'Бариста', 'про бариста': 'Про бариста', 'старший бариста': 'Старший бариста' };
+const stBadge = st => st ? `<span class="stb st${ST_LIST.indexOf(st)}">${ST_LABEL[st] || esc(st)}</span>` : '';
+const statusOf = name => (me.statuses || {})[name] || '';
+// Выбор адресатов: всем / по статусу / админам / выбрать людей
+function audiencePicker(f, d, p, withAdmins) {
+  const modes = [['all', 'Всем'], ['status', 'По статусу']].concat(withAdmins ? [['admins', 'Админам']] : []).concat([['people', 'Выбрать людей']]);
+  let html = `<div class="seg">${modes.map(([m, l]) => `<button data-${p}mode="${m}" class="${f.mode === m ? 'on st3' : ''}">${l}</button>`).join('')}</div>`;
+  if (f.mode === 'status') html += `<div class="seg" style="margin-top:10px">${(d.statuses || ST_LIST).map(st => `<button data-${p}st="${esc(st)}" class="${f.statuses.indexOf(st) >= 0 ? 'on st' + ST_LIST.indexOf(st) : ''}">${ST_LABEL[st]}</button>`).join('')}</div>`;
+  if (f.mode === 'people') html += `<div class="chips" style="margin-top:10px">${(d.people || []).map(x => `<button class="chip ${f.ids.indexOf(x.id) >= 0 ? 'on' : ''}" data-${p}pid="${esc(x.id)}">${esc(x.name)}</button>`).join('') || '<p class="sub">Никто не подключён к боту</p>'}</div>`;
+  return html;
+}
+function bindAudience(f, p) {
+  document.querySelectorAll(`[data-${p}mode]`).forEach(b => b.onclick = () => { keepForm(p); f.mode = b.dataset[p + 'mode']; render(); });
+  document.querySelectorAll(`[data-${p}st]`).forEach(b => b.onclick = () => { keepForm(p); const v = b.dataset[p + 'st'], i = f.statuses.indexOf(v); if (i >= 0) f.statuses.splice(i, 1); else f.statuses.push(v); render(); });
+  document.querySelectorAll(`[data-${p}pid]`).forEach(b => b.onclick = () => { keepForm(p); const v = b.dataset[p + 'pid'], i = f.ids.indexOf(v); if (i >= 0) f.ids.splice(i, 1); else f.ids.push(v); render(); });
+}
+const formKeep = {};
+function keepForm(p) { document.querySelectorAll(`[id^="${p}"]`).forEach(el => { if ('value' in el) formKeep[el.id] = el.value; }); }
+function restoreForm(p) { Object.keys(formKeep).filter(k => k[0] === p).forEach(k => { const el = document.getElementById(k); if (el) el.value = formKeep[k]; }); }
+
 function shiftCard() {
   const list = me.shift || [];
   if (!list.length) return card(`<h2>На смене сегодня</h2><p class="sub">В графике на сегодня никого не нашёл</p>`);
@@ -447,7 +500,7 @@ function shiftCard() {
   const rows = list.map(x => {
     const cls = now >= x.from && now < x.to ? 'now' : now >= x.to ? 'past' : '';
     return `<div class="shift ${cls}"><div class="ava">${esc(String(x.name)[0] || '?')}</div>
-      <div class="pname"><b>${esc(x.name)}${x.role ? `<span class="mini">${esc(x.role)}</span>` : ''}${x.to >= 22 * 60 ? '<span class="mini close">закрывает</span>' : ''}</b>
+      <div class="pname"><b>${esc(x.name)}${stBadge(statusOf(x.name))}${x.role ? `<span class="mini">${esc(x.role)}</span>` : ''}${x.to >= 22 * 60 ? '<span class="mini close">закрывает</span>' : ''}</b>
       <span>${cls === 'now' ? 'сейчас на смене' : cls === 'past' ? 'смена закончилась' : 'придёт в ' + t(x.from)}</span></div>
       <span class="time">${t(x.from)} – ${t(x.to)}</span></div>`;
   }).join('');
@@ -507,6 +560,49 @@ const views = {
     }
     if (ro || !t.items.length || t.items.every(i => made[i.pid])) return out;
     out += `<div class="dock"><button class="btn ok" id="made" ${sel.size ? '' : 'disabled'}>${sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'}</button></div>`;
+    return out;
+  },
+
+  async tasks() {
+    if (!taskData) taskData = await call('tasks');
+    const d = taskData;
+    const open = d.mine.filter(t => !t.doneMe), done = d.mine.filter(t => t.doneMe);
+    const row = t => `<div class="task ${t.doneMe ? 'done' : ''}"><div class="box" ${t.doneMe ? '' : `data-tdone="${esc(t.id)}"`}>✓</div>
+      <div class="pname"><b>${esc(t.text)}</b><span>от ${esc(t.byName)}${t.due ? ' · срок: ' + esc(t.due) : ''}</span></div></div>`;
+    let out = card(`<h2>Мои задачи</h2><p class="sub">${open.length ? 'Нажми на квадрат, когда сделаешь' : 'Все задачи выполнены 🎉'}</p>` +
+      (open.length ? open.map(row).join('') : '') + (done.length ? `<h3>Выполнено</h3>` + done.slice(0, 10).map(row).join('') : ''));
+    if (d.canCreate) {
+      out += card(`<h2>Поставить задачу</h2><div class="form">
+        <label>Что нужно сделать<textarea id="tText" rows="3" placeholder="Например: протереть полки за кофемашиной"></textarea></label>
+        <label>Срок (необязательно)<input id="tDue" placeholder="до пятницы, до 18:00…"></label>
+        <label>Кому</label>${audiencePicker(taskForm, d, 't')}
+        <button class="btn" id="tAdd">Поставить задачу</button></div>`);
+      if (d.created.length) out += card(`<h2>Поставленные</h2>` + d.created.map(t => `<div class="task"><div class="pname"><b>${esc(t.text)}</b>
+        <span>${esc(t.to)} · готово ${t.doneCnt}/${t.total}${t.leftNames.length && t.leftNames.length <= 6 ? ' · ждём: ' + esc(t.leftNames.join(', ')) : ''}</span></div>
+        <button class="x" data-tdel="${esc(t.id)}">×</button></div>`).join(''));
+    }
+    return out;
+  },
+
+  async events() {
+    if (!evData) evData = await call('events');
+    const d = evData;
+    const mon = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    const list = d.events.map(e => { const dt = new Date(e.date + 'T12:00');
+      return `<div class="ev"><div class="evd"><div><b>${dt.getDate()}</b><small>${mon[dt.getMonth()]}</small></div></div>
+        <div class="pname"><b>${esc(e.title)}</b><span>${dt.toLocaleDateString('ru-RU', { weekday: 'long' })} в ${esc(e.time)} · 👥 ${esc(e.to)}</span>
+        ${e.note ? `<span style="display:block;margin-top:4px;color:var(--forest-2)">${esc(e.note)}</span>` : ''}</div>
+        ${e.canDel ? `<button class="x" data-edel="${esc(e.id)}">×</button>` : ''}</div>`; }).join('');
+    let out = card(`<h2>События</h2><p class="sub">${d.events.length ? 'Ближайшие собрания и встречи' : 'Пока ничего не запланировано'}</p>${list}`);
+    if (d.canCreate) {
+      const today = new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10);
+      out += card(`<h2>Новое событие</h2><div class="form">
+        <label>Что<input id="eTitle" placeholder="Например: собрание команды"></label>
+        <div class="two"><label>Дата<input id="eDate" type="date" min="${today}" value="${today}"></label><label>Время<input id="eTime" type="time" value="18:00"></label></div>
+        <label>Комментарий (необязательно)<textarea id="eNote" rows="2" placeholder="Повестка, место…"></textarea></label>
+        <label>Для кого</label>${audiencePicker(evForm, d, 'e', true)}
+        <button class="btn" id="eAdd">Создать и уведомить</button></div>`);
+    }
     return out;
   },
 
@@ -573,26 +669,31 @@ const views = {
     const extra = (cfg.extra || []).map((n, k) => `<div class="user"><div class="ava">${esc(n[0] || '?')}</div><div class="pname"><b>${esc(n)}</b><span>добавлен вручную</span></div><button class="x" data-xdel="${k}">×</button></div>`).join('');
     const users = cfg.users.length
       ? cfg.users.map(u => { const v = (cfg.viewers || []).indexOf(u.id) >= 0;
-          return `<div class="user"><div class="ava">${esc(String(u.name)[0] || '?')}</div><div class="pname"><b>${esc(u.name)}</b><span>${v ? '👁 только отчёты' : 'сотрудник'}</span></div>
-          <button class="tkbtn" data-view="${esc(u.id)}" data-on="${v ? 0 : 1}" style="${v ? 'background:var(--forest);color:var(--cream)' : ''}">👁 Отчёты</button><button class="x" data-rm="${esc(u.id)}">×</button></div>`; }).join('')
+          return `<div class="user"><div class="ava">${esc(String(u.name)[0] || '?')}</div><div class="pname"><b>${esc(u.name)}</b><span>${v ? '🛡 админ: отчёты, задачи, события' : 'сотрудник'}</span></div>
+          <button class="tkbtn" data-view="${esc(u.id)}" data-on="${v ? 0 : 1}" style="${v ? 'background:var(--forest);color:var(--cream)' : ''}">🛡 Админ</button><button class="x" data-rm="${esc(u.id)}">×</button></div>`; }).join('')
       : '<p class="sub">Пока никто не зарегистрировался. Скинь команде ссылку на бота.</p>';
     const badges = list => list && list.length ? list.map(n => `<span class="badge">${esc(n)}</span>`).join('') : '<span class="sub">никого</span>';
     const whoHtml = who ? `<h3>Заготовки 14:00–15:30</h3>${badges(who.prep)}<h3>Подсчёт в ${esc(who.countAt)}</h3>${badges(who.count)}` : '';
-    const usersCard = card(`<h2>Подключены к боту</h2><p class="sub">«👁 Отчёты» — наблюдатель: видит историю закрытий и фото, но ничего не меняет</p>${users}`);
+    const sts = cfg.statuses || {};
+    const stNames = (cfg.schedule || []).filter(n => (cfg.off || []).indexOf(n) < 0).concat(cfg.extra || []);
+    const statusCard = card(`<h2>Статусы</h2><p class="sub">Нажми на статус — сохраняется сразу. Цвет видно на главном экране</p>` +
+      stNames.map(n => `<div class="strow"><b>${esc(n)}</b> ${stBadge(sts[n])}<div class="seg">${ST_LIST.map((st, k) => `<button data-stname="${esc(n)}" data-st="${st}" class="${sts[n] === st ? 'on st' + k : ''}">${ST_LABEL[st]}</button>`).join('')}</div></div>`).join(''));
+    const usersCard = card(`<h2>Подключены к боту</h2><p class="sub">«🛡 Админ» — видит историю закрытий и фото, ставит задачи и создаёт события. Заготовки, команду и закрытие смены менять не может</p>${users}`);
     return card(`<h2>Команда бара</h2><p class="sub">Все из графика этого месяца попадают сюда сами. Новый человек в графике — появится тут, убрали из графика — пропадёт. Нажми на имя, чтобы выключить того, кто не работает в баре.</p><div class="chips">${chips}</div>
         <h3>Добавить вручную</h3><p class="sub">Если человека нет в графике</p>${extra}
         <div class="cl-row" style="margin-top:8px"><input id="newName" placeholder="Имя" style="min-width:0;flex:1;border:1.5px solid transparent;background:var(--cream);border-radius:10px;padding:10px 12px;outline:none"><button class="tkbtn" id="addName" style="padding:10px 14px;flex:0 0 auto">Добавить</button></div>
         <h3>Статусы «не в баре»</h3><textarea id="exclude" rows="3">${esc(cfg.exclude.join(', '))}</textarea>
         <button class="btn" id="saveStaff">Сохранить</button>`) +
-      usersCard +
+      statusCard + usersCard +
       card(`<h2>Проверка графика</h2><p class="sub">Кого бот отметит сегодня.</p>${whoHtml}<button class="btn soft" id="who">Проверить сегодня</button>`);
   },
 
   async history() {
     if (!hist) hist = (await call('history')).items;
-    if (!hist.length) return empty('📜', 'Закрытий пока нет', 'Здесь появится история каждого закрытия смены.');
+    const rep = me.isAdmin ? card(`<h2>🏆 Итоги 2 недель</h2><p class="sub">Рейтинг, кто сколько заготовок сварил. Приходит в группу сам раз в 2 недели в понедельник в 12:00</p><button class="btn soft" id="reportNow">Отправить итоги сейчас</button>`) : '';
+    if (!hist.length) return rep + empty('📜', 'Закрытий пока нет', 'Здесь появится история каждого закрытия смены.');
     const day = d => new Date(d + 'T12:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
-    return card(`<h2>История закрытий</h2><p class="sub">Последние 45 дней. Нажми, чтобы посмотреть подробно</p>`) +
+    return rep + card(`<h2>История закрытий</h2><p class="sub">Последние 45 дней. Нажми, чтобы посмотреть подробно</p>`) +
       hist.map((x, k) => {
         const c = x.checks, okAll = c && c.done === c.total;
         return `<div class="card hcard" data-h="${k}"><div style="display:flex;align-items:center;gap:12px">
@@ -705,9 +806,13 @@ const binds = {
       catch (err) { toast(err.message); }
       e.target.disabled = false;
     };
+    document.querySelectorAll('[data-stname]').forEach(b => b.onclick = async () => {
+      const name = b.dataset.stname, st = (cfg.statuses || {})[name] === b.dataset.st ? '' : b.dataset.st;
+      try { const r = await call('setStatus', { name, status: st }); cfg.statuses = r.statuses; me.statuses = r.statuses; try { tg.HapticFeedback.selectionChanged(); } catch (e) {} render(); } catch (e) { toast(e.message); }
+    });
     document.querySelectorAll('[data-view]').forEach(b => b.onclick = async () => {
       const on = b.dataset.on === '1';
-      if (on && !(await confirmBox('Сделать наблюдателем? Он увидит историю закрытий и фото, но не сможет ничего менять и закрывать смену.'))) return;
+      if (on && !(await confirmBox('Сделать админом? Он увидит отчёты закрытий, сможет ставить задачи и создавать события. Менять заготовки и закрывать смену не сможет.'))) return;
       b.disabled = true;
       try { const r = await call('setViewer', { id: b.dataset.view, on }); cfg.viewers = r.viewers; haptic('success'); render(); } catch (e) { toast(e.message); b.disabled = false; }
     });
@@ -733,7 +838,57 @@ const binds = {
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Отправить заказ'; }
     };
   },
+  tasks() {
+    restoreForm('t');
+    bindAudience(taskForm, 't');
+    document.querySelectorAll('[data-tdone]').forEach(b => b.onclick = async () => {
+      if (!(await confirmBox('Отметить задачу выполненной? Тот, кто поставил, получит уведомление.'))) return;
+      try { await call('taskDone', { id: b.dataset.tdone }); haptic('success'); toast('Молодец! ✅'); taskData = null; me.openTasks = Math.max(0, (me.openTasks || 1) - 1); render(); } catch (e) { toast(e.message); }
+    });
+    document.querySelectorAll('[data-tdel]').forEach(b => b.onclick = async () => {
+      if (!(await confirmBox('Удалить задачу?'))) return;
+      try { await call('taskDel', { id: b.dataset.tdel }); taskData = null; render(); } catch (e) { toast(e.message); }
+    });
+    const add = document.getElementById('tAdd'); if (!add) return;
+    add.onclick = async () => {
+      const text = document.getElementById('tText').value.trim(), due = document.getElementById('tDue').value.trim();
+      if (!text) return toast('Напиши, что нужно сделать');
+      if (taskForm.mode === 'status' && !taskForm.statuses.length) return toast('Выбери статус');
+      if (taskForm.mode === 'people' && !taskForm.ids.length) return toast('Выбери людей');
+      add.disabled = true; add.textContent = 'Отправляю…';
+      try { const r = await call('taskAdd', { text, due, to: taskForm }); haptic('success'); toast('Задача отправлена ✅');
+        Object.keys(formKeep).filter(k => k[0] === 't').forEach(k => delete formKeep[k]); taskData = null; me = await call('me'); render(); }
+      catch (e) { toast(e.message); add.disabled = false; add.textContent = 'Поставить задачу'; }
+    };
+  },
+  events() {
+    restoreForm('e');
+    bindAudience(evForm, 'e');
+    document.querySelectorAll('[data-edel]').forEach(b => b.onclick = async () => {
+      if (!(await confirmBox('Отменить событие? Всем приглашённым придёт уведомление.'))) return;
+      try { await call('eventDel', { id: b.dataset.edel, notify: true }); evData = null; render(); } catch (e) { toast(e.message); }
+    });
+    const add = document.getElementById('eAdd'); if (!add) return;
+    add.onclick = async () => {
+      const title = document.getElementById('eTitle').value.trim(), date = document.getElementById('eDate').value, time = document.getElementById('eTime').value, note = document.getElementById('eNote').value.trim();
+      if (!title) return toast('Напиши, что за событие');
+      if (!date || !time) return toast('Укажи дату и время');
+      if (evForm.mode === 'status' && !evForm.statuses.length) return toast('Выбери статус');
+      if (evForm.mode === 'people' && !evForm.ids.length) return toast('Выбери людей');
+      add.disabled = true; add.textContent = 'Создаю…';
+      try { await call('eventAdd', { title, date, time, note, to: evForm }); haptic('success'); toast('Событие создано, все уведомлены 📅');
+        Object.keys(formKeep).filter(k => k[0] === 'e').forEach(k => delete formKeep[k]); evData = null; render(); }
+      catch (e) { toast(e.message); add.disabled = false; add.textContent = 'Создать и уведомить'; }
+    };
+  },
   history() {
+    const rb = document.getElementById('reportNow');
+    if (rb) rb.onclick = async () => {
+      if (!(await confirmBox('Отправить в группу итоги заготовок за последние 2 недели?'))) return;
+      rb.disabled = true;
+      try { await call('reportNow'); haptic('success'); toast('Итоги отправлены в группу 🏆'); } catch (e) { toast(e.message); }
+      rb.disabled = false;
+    };
     document.querySelectorAll('[data-h]').forEach(el => el.onclick = () => openClosing(hist[+el.dataset.h]));
   },
   tk() {
