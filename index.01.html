@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Заготовки</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{
+    --bg:var(--tg-theme-bg-color,#ffffff);
+    --bg2:var(--tg-theme-secondary-bg-color,#f2f2f7);
+    --text:var(--tg-theme-text-color,#111111);
+    --hint:var(--tg-theme-hint-color,#8e8e93);
+    --accent:var(--tg-theme-button-color,#2f80ed);
+    --accent-text:var(--tg-theme-button-text-color,#ffffff);
+    --danger:#e5484d; --ok:#2fa84f; --warn:#f5a524;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.4 -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;background:var(--bg2);color:var(--text);-webkit-tap-highlight-color:transparent}
+  .tabs{display:flex;gap:6px;overflow-x:auto;padding:10px 12px;position:sticky;top:0;background:var(--bg2);z-index:5;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;padding:8px 14px;border-radius:999px;background:var(--bg);border:0;color:var(--text);font:inherit;cursor:pointer}
+  .tab.on{background:var(--accent);color:var(--accent-text)}
+  main{padding:0 12px 90px}
+  .card{background:var(--bg);border-radius:14px;padding:14px;margin-bottom:10px}
+  h2{font-size:17px;margin:2px 0 8px}
+  h3{font-size:15px;margin:14px 0 6px}
+  p{margin:6px 0}
+  .hint{color:var(--hint);font-size:13px}
+  .row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--bg2)}
+  .row:last-child{border-bottom:0}
+  .grow{flex:1;min-width:0}
+  .grow b{word-break:break-word}
+  input,textarea{font:inherit;color:var(--text);background:var(--bg2);border:1px solid transparent;border-radius:10px;padding:9px 10px;width:100%}
+  input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  .num{width:84px;text-align:right;flex:0 0 auto}
+  .unit{width:28px;color:var(--hint);font-size:13px;flex:0 0 auto}
+  .btn{display:block;width:100%;padding:13px;border:0;border-radius:12px;background:var(--accent);color:var(--accent-text);font:inherit;font-weight:600;margin-top:12px;cursor:pointer}
+  .btn.ghost{background:var(--bg2);color:var(--accent)}
+  .btn:disabled{opacity:.5}
+  .x{border:0;background:none;color:var(--danger);font-size:20px;padding:4px 6px;cursor:pointer}
+  .prep{display:grid;grid-template-columns:1fr 64px 64px 64px 30px;gap:6px;align-items:center;padding:6px 0}
+  .prep.head{color:var(--hint);font-size:12px;padding-bottom:0}
+  .prep input{padding:8px}
+  .item{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--bg2)}
+  .item:last-child{border-bottom:0}
+  .need{font-weight:700;color:var(--warn);white-space:nowrap}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--bg2);font-size:12px;margin:2px 4px 2px 0}
+  .ok{color:var(--ok)}
+  .center{text-align:center;padding:40px 16px}
+  .big{font-size:42px}
+  label.check{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--bg2);cursor:pointer}
+  label.check input{width:20px;height:20px;flex:0 0 auto}
+  #toast{position:fixed;left:12px;right:12px;bottom:16px;background:#222;color:#fff;padding:12px 14px;border-radius:12px;opacity:0;transform:translateY(20px);transition:.25s;pointer-events:none;z-index:9}
+  #toast.show{opacity:1;transform:none}
+</style>
+</head>
+<body>
+<div id="app"><div class="center hint">Загрузка…</div></div>
+<div id="toast"></div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp;
+const API = new URLSearchParams(location.search).get('api');
+const app = document.getElementById('app');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = x => String(Math.round(Number(x) * 100) / 100);
+const fmtTs = ts => { const d = new Date(ts); return d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}) + ' ' + d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); };
+const toNum = v => { const s = String(v).trim().replace(',', '.'); return s === '' ? '' : Number(s); };
+
+let me = null, tab = 'count', cfg = null, names = null, who = null, hist = null, lastResult = null;
+
+async function call(action, payload) {
+  const q = new URLSearchParams({ action, initData: tg.initData });
+  if (payload) q.set('payload', JSON.stringify(payload));
+  const r = await fetch(API + '?' + q.toString());
+  const j = await r.json();
+  if (j.error) throw new Error(j.error);
+  return j;
+}
+function toast(msg) {
+  const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2200);
+}
+function haptic(type) { try { tg.HapticFeedback.notificationOccurred(type); } catch (e) {} }
+function confirmBox(text) {
+  return new Promise(res => { try { tg.showConfirm(text, ok => res(ok)); } catch (e) { res(confirm(text)); } });
+}
+const card = html => `<div class="card">${html}</div>`;
+
+// ---------- вкладки ----------
+function tabsList() {
+  const t = [['count', '🧮 Подсчёт'], ['today', '🧪 Сегодня']];
+  if (me.isAdmin) t.push(['preps', '⚙️ Заготовки'], ['staff', '👥 Сотрудники'], ['history', '📜 История']);
+  return t;
+}
+async function render() {
+  const tabs = tabsList().map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('');
+  let body = '';
+  try { body = await views[tab](); } catch (e) { body = card(`<p style="color:var(--danger)">${esc(e.message)}</p>`); }
+  app.innerHTML = `<div class="tabs">${tabs}</div><main>${body}</main>`;
+  app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; lastResult = null; render(); });
+  (binds[tab] || (() => {}))();
+}
+
+const views = {
+  // ===== Подсчёт =====
+  async count() {
+    if (lastResult) {
+      const items = lastResult.items;
+      return card(`<div class="center" style="padding:16px 0"><div class="big">✅</div><h2>Остатки отправлены</h2></div>` +
+        (items.length ? `<h3>Завтра нужно сварить:</h3>` + items.map(itemHtml).join('') : `<p class="ok">Всего хватает — заготовки не нужны 👍</p>`) +
+        `<button class="btn ghost" id="again">Изменить подсчёт</button>`);
+    }
+    if (!me.preps.length) return card(`<h2>Подсчёт</h2><p class="hint">Заготовки ещё не добавлены${me.isAdmin ? ' — добавь их во вкладке «⚙️ Заготовки».' : '.'}</p>`);
+    const last = me.last ? `<p class="hint">Последний подсчёт: ${esc(me.last.by)}, ${fmtTs(me.last.ts)}</p>` : '';
+    const rows = me.preps.map(p => `
+      <div class="row">
+        <div class="grow"><b>${esc(p.name)}</b><div class="hint">мин. ${fmt(p.min)} ${esc(p.unit)}</div></div>
+        <input class="num" inputmode="decimal" data-id="${esc(p.id)}" placeholder="0">
+        <span class="unit">${esc(p.unit)}</span>
+      </div>`).join('');
+    return card(`<h2>Остатки на закрытии</h2>${last}${rows}<button class="btn" id="send">Отправить</button>`);
+  },
+  // ===== Сегодня =====
+  async today() {
+    const t = me.today;
+    if (t.done && t.done.none) return card(`<div class="center"><div class="big">👍</div><h2>Сегодня заготовки не нужны</h2></div>`);
+    if (!me.last && !t.items.length) return card(`<div class="center"><div class="big">🤷</div><h2>Нет свежего подсчёта</h2><p class="hint">Остатки внесут вечером на закрытии.</p></div>`);
+    if (!t.items.length) return card(`<div class="center"><div class="big">👍</div><h2>Всего хватает</h2><p class="hint">Заготовки не нужны.</p></div>`);
+    const list = t.items.map(itemHtml).join('');
+    const status = t.done
+      ? `<p class="ok" style="font-weight:600;margin-top:12px">✅ Сделано — ${esc(t.done.by)}</p>`
+      : `<button class="btn" id="done">✅ Сделал</button>`;
+    return card(`<h2>Заготовки на сегодня</h2>${me.last ? `<p class="hint">Подсчёт: ${esc(me.last.by)}, ${fmtTs(me.last.ts)}</p>` : ''}${list}${status}`);
+  },
+  // ===== Админ: заготовки =====
+  async preps() {
+    if (!cfg) cfg = await call('config');
+    const rows = cfg.preps.map((p, i) => `
+      <div class="prep" data-i="${i}">
+        <input data-f="name" value="${esc(p.name)}" placeholder="Название">
+        <input data-f="unit" value="${esc(p.unit)}" placeholder="л">
+        <input data-f="min" inputmode="decimal" value="${esc(p.min)}" placeholder="0">
+        <input data-f="norm" inputmode="decimal" value="${esc(p.norm)}" placeholder="0">
+        <button class="x" data-del="${i}">×</button>
+      </div>`).join('');
+    return card(`<h2>Заготовки</h2>
+      <p class="hint">Минимум — ниже этого надо варить. Норма — до скольки варить.</p>
+      <div class="prep head"><span>Название</span><span>Ед.</span><span>Мин.</span><span>Норма</span><span></span></div>
+      ${rows || '<p class="hint">Пока пусто</p>'}
+      <button class="btn ghost" id="add">+ Добавить заготовку</button>
+      <button class="btn" id="save">Сохранить</button>`);
+  },
+  // ===== Админ: сотрудники =====
+  async staff() {
+    if (!cfg) cfg = await call('config');
+    if (!names) names = (await call('names')).names;
+    const all = names.concat(cfg.staff.filter(s => names.indexOf(s) < 0));
+    const checks = all.map(n => `<label class="check"><input type="checkbox" value="${esc(n)}" ${cfg.staff.indexOf(n) >= 0 ? 'checked' : ''}><span>${esc(n)}</span></label>`).join('');
+    const users = cfg.users.length
+      ? cfg.users.map(u => `<div class="row"><div class="grow">${esc(u.name)}<div class="hint">ID ${esc(u.id)}</div></div><button class="x" data-rm="${esc(u.id)}">×</button></div>`).join('')
+      : '<p class="hint">Пока никто не зарегистрировался</p>';
+    const whoHtml = who
+      ? `<p><b>Заготовки 14:00–15:30:</b><br>${who.prep && who.prep.length ? who.prep.map(n => `<span class="badge">${esc(n)}</span>`).join('') : '<span class="hint">никого</span>'}</p>
+         <p><b>Подсчёт в ${esc(who.countAt)}:</b><br>${who.count && who.count.length ? who.count.map(n => `<span class="badge">${esc(n)}</span>`).join('') : '<span class="hint">никого</span>'}</p>`
+      : '';
+    return card(`<h2>Кто в системе</h2><p class="hint">Отметь всех, кто работает в баре. Имена берутся из графика за этот месяц.</p>${checks}
+        <h3>Статусы «не в баре»</h3><p class="hint">Через запятую. Если в графике стоит такое слово — человеку не пишем.</p>
+        <textarea id="exclude" rows="3">${esc(cfg.exclude.join(', '))}</textarea>
+        <button class="btn" id="saveStaff">Сохранить</button>`) +
+      card(`<h2>Зарегистрированы в боте</h2>${users}`) +
+      card(`<h2>Проверка графика</h2><p class="hint">Кто сегодня получит уведомления.</p>${whoHtml}<button class="btn ghost" id="who">Проверить сегодня</button>`);
+  },
+  // ===== Админ: история =====
+  async history() {
+    if (!hist) hist = (await call('history')).items;
+    if (!cfg) cfg = await call('config');
+    if (!hist.length) return card('<p class="hint">Подсчётов пока нет.</p>');
+    const byId = {}; cfg.preps.forEach(p => byId[p.id] = p);
+    return hist.map(h => card(`<h2>${esc(h.date.split('-').reverse().join('.'))}</h2><p class="hint">${esc(h.by)}, ${fmtTs(h.ts)}</p>` +
+      Object.keys(h.values).map(id => {
+        const p = byId[id]; if (!p) return '';
+        const low = h.values[id] < p.min;
+        return `<div class="item"><div class="grow">${esc(p.name)}</div><div style="${low ? 'color:var(--danger);font-weight:600' : ''}">${fmt(h.values[id])} ${esc(p.unit)}</div></div>`;
+      }).join(''))).join('');
+  }
+};
+
+function itemHtml(i) {
+  return `<div class="item"><div class="grow"><b>${esc(i.name)}</b><div class="hint">осталось ${fmt(i.have)} ${esc(i.unit)}, норма ${fmt(i.norm)}</div></div><div class="need">+${fmt(i.need)} ${esc(i.unit)}</div></div>`;
+}
+
+const binds = {
+  count() {
+    const again = document.getElementById('again');
+    if (again) again.onclick = () => { lastResult = null; render(); };
+    const btn = document.getElementById('send'); if (!btn) return;
+    btn.onclick = async () => {
+      const values = {}; let empty = 0, bad = 0;
+      document.querySelectorAll('input[data-id]').forEach(i => {
+        const v = toNum(i.value);
+        if (v === '') empty++; else if (isNaN(v) || v < 0) bad++; else values[i.dataset.id] = v;
+      });
+      if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
+      if (empty && !(await confirmBox(`Не заполнено позиций: ${empty}. Отправить так?`))) return;
+      btn.disabled = true; btn.textContent = 'Отправляю…';
+      try {
+        lastResult = await call('count', { values });
+        me = await call('me'); haptic('success'); render();
+      } catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Отправить'; }
+    };
+  },
+  today() {
+    const btn = document.getElementById('done'); if (!btn) return;
+    btn.onclick = async () => {
+      if (!(await confirmBox('Отметить, что заготовки сделаны? Всем придёт уведомление.'))) return;
+      btn.disabled = true;
+      try {
+        const r = await call('done');
+        if (r.already) toast('Уже отметил(а): ' + r.already); else haptic('success');
+        me = await call('me'); render();
+      } catch (e) { toast(e.message); btn.disabled = false; }
+    };
+  },
+  preps() {
+    const collect = () => {
+      document.querySelectorAll('.prep[data-i]').forEach(row => {
+        const p = cfg.preps[row.dataset.i];
+        row.querySelectorAll('input').forEach(inp => p[inp.dataset.f] = inp.value);
+      });
+    };
+    document.getElementById('add').onclick = () => { collect(); cfg.preps.push({ name: '', unit: '', min: '', norm: '' }); render(); };
+    document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { collect(); cfg.preps.splice(+b.dataset.del, 1); render(); });
+    document.getElementById('save').onclick = async e => {
+      collect(); e.target.disabled = true;
+      try {
+        const r = await call('savePreps', { preps: cfg.preps });
+        cfg.preps = r.preps; me = await call('me'); toast('Сохранено ✅'); haptic('success'); render();
+      } catch (err) { toast(err.message); e.target.disabled = false; }
+    };
+  },
+  staff() {
+    document.getElementById('saveStaff').onclick = async e => {
+      const staff = [...document.querySelectorAll('label.check input:checked')].map(i => i.value);
+      const exclude = document.getElementById('exclude').value.split(',').map(s => s.trim()).filter(Boolean);
+      e.target.disabled = true;
+      try { await call('saveStaff', { staff, exclude }); cfg.staff = staff; cfg.exclude = exclude; toast('Сохранено ✅'); haptic('success'); }
+      catch (err) { toast(err.message); }
+      e.target.disabled = false;
+    };
+    document.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+      if (!(await confirmBox('Удалить из бота? Уведомления перестанут приходить.'))) return;
+      try { await call('removeUser', { id: b.dataset.rm }); cfg = await call('config'); render(); } catch (e) { toast(e.message); }
+    });
+    document.getElementById('who').onclick = async e => {
+      e.target.disabled = true; e.target.textContent = 'Смотрю график…';
+      try { who = await call('whoToday'); render(); } catch (err) { toast(err.message); e.target.disabled = false; }
+    };
+  },
+  history() {}
+};
+
+(async function init() {
+  if (!tg || !tg.initData) { app.innerHTML = `<div class="center"><div class="big">📱</div><h2>Открой через бота</h2><p class="hint">Это приложение работает только внутри Телеграма.</p></div>`; return; }
+  tg.ready(); tg.expand();
+  if (!API) { app.innerHTML = `<div class="center"><h2>Нет адреса сервера</h2><p class="hint">Открой приложение кнопкой в боте.</p></div>`; return; }
+  try {
+    me = await call('me');
+    if (me.today && me.today.items.length && !me.today.done && new Date().getHours() >= 12 && new Date().getHours() < 20) tab = 'today';
+    render();
+  } catch (e) {
+    app.innerHTML = `<div class="center"><div class="big">🔒</div><h2>${esc(e.message)}</h2></div>`;
+  }
+})();
+</script>
+</body>
+</html>
