@@ -81,6 +81,19 @@
   .dock{position:fixed;left:0;right:0;bottom:0;padding:12px 12px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--paper) 30%);z-index:6}
   .dock .btn{margin:0;box-shadow:0 8px 24px rgba(10,51,32,.25)}
 
+  .check{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer}
+  .check:last-child{border-bottom:0}
+  .box{width:28px;height:28px;border-radius:9px;border:2px solid var(--olive);display:grid;place-items:center;flex:0 0 auto;color:transparent;font-weight:700;transition:.15s}
+  .check.on .box{background:var(--forest);border-color:var(--forest);color:var(--cream)}
+  .check.made{cursor:default}
+  .check.made .box{background:var(--olive);border-color:var(--olive);color:var(--forest)}
+  .check.made b{text-decoration:line-through;opacity:.6}
+  .shelf{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+  .shelf:last-child{border-bottom:0}
+  .days{font-weight:600;padding:5px 11px;border-radius:999px;background:var(--olive-soft);white-space:nowrap;font-size:14px}
+  .days.soon{background:var(--warm-soft);color:var(--warm)}
+  .days.today{background:var(--danger);color:#fff}
+
   /* ---------- админка ---------- */
   .edit{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
   .edit .top{display:flex;gap:8px;align-items:center}
@@ -129,6 +142,7 @@ const toNum = v => { const s = String(v).trim().replace(',', '.'); return s === 
 const ICONS = ['🍯','🍋','🫙','🧴','🍓','🌿','🥛','🍊','🫐','🍵'];
 const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % ICONS.length];
 
+let sel = new Set();
 let me = null, tab = 'count', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
 async function call(action, payload) {
@@ -200,13 +214,23 @@ const views = {
   },
 
   async today() {
-    const t = me.today;
-    if (t.done && t.done.none) return empty('🌿', 'Сегодня варить не нужно', 'Всех заготовок хватает.');
-    if (!me.last && !t.items.length) return empty('🌙', 'Ещё нет подсчёта', 'Остатки внесут вечером на закрытии.');
-    if (!t.items.length) return empty('🌿', 'Всего хватает', 'Заготовки сегодня не нужны.');
-    const head = `<h2>Сварить сегодня</h2><p class="sub">${me.last ? 'По подсчёту: ' + esc(me.last.by) + ', ' + fmtTs(me.last.ts) : ''}</p>`;
-    if (t.done) return card(head + t.items.map(needRow).join('') + `<div class="status"><span class="big">✅</span><div>Готово!<br><small>Сварил(а): ${esc(t.done.by)}</small></div></div>`);
-    return card(head + t.items.map(needRow).join('')) + `<div class="dock"><button class="btn ok" id="done">✅ Я сварил(а) заготовки</button></div>`;
+    const t = me.today, made = t.made || {};
+    const inList = {}; t.items.forEach(i => inList[i.pid] = 1);
+    let out = '';
+    if (t.items.length) {
+      const rows = t.items.map(i => made[i.pid]
+        ? `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>сварил(а) ${esc(made[i.pid])}</span></div></div>`
+        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" data-pid="${esc(i.pid)}"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span></div><div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div></div>`).join('');
+      const allDone = t.items.every(i => made[i.pid]);
+      out += card(`<h2>Сварить сегодня</h2><p class="sub">${allDone ? 'Всё готово — спасибо! 🎉' : 'Отметь, что сварил(а)'}</p>${rows}`);
+    } else if (t.done && t.done.none) {
+      out += empty('🌿', 'Сегодня варить не нужно', 'Всех заготовок хватает.');
+    } else {
+      out += empty(me.last ? '🌿' : '🌙', me.last ? 'Всего хватает' : 'Ещё нет подсчёта', me.last ? 'По подсчёту заготовки не нужны.' : 'Остатки внесут вечером на закрытии.');
+    }
+    if (!t.items.length || t.items.every(i => made[i.pid])) return out;
+    out += `<div class="dock"><button class="btn ok" id="made" ${sel.size ? '' : 'disabled'}>${sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'}</button></div>`;
+    return out;
   },
 
   async preps() {
@@ -284,12 +308,19 @@ const binds = {
     };
   },
   today() {
-    const btn = document.getElementById('done'); if (!btn) return;
+    const btn = document.getElementById('made'); if (!btn) return;
+    const sync = () => { btn.disabled = !sel.size; btn.textContent = sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'; };
+    document.querySelectorAll('[data-pid]').forEach(el => el.onclick = () => {
+      const id = el.dataset.pid;
+      if (sel.has(id)) sel.delete(id); else sel.add(id);
+      el.classList.toggle('on', sel.has(id)); sync();
+      try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
+    });
     btn.onclick = async () => {
-      if (!(await confirmBox('Отметить, что заготовки сварены? Команда получит уведомление.'))) return;
-      btn.disabled = true;
-      try { const r = await call('done'); if (r.already) toast('Уже отметил(а): ' + r.already); else { haptic('success'); toast('Молодец! 💪'); } me = await call('me'); render(); }
-      catch (e) { toast(e.message); btn.disabled = false; }
+      if (!sel.size) return;
+      btn.disabled = true; btn.textContent = 'Отмечаю…';
+      try { await call('made', { pids: [...sel] }); sel.clear(); haptic('success'); toast('Молодец! 💪'); me = await call('me'); render(); }
+      catch (e) { toast(e.message); sync(); }
     };
   },
   preps() {
