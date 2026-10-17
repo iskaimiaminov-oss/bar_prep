@@ -1263,7 +1263,6 @@ function initPull() {
     render();
     prefetch();
     if (restored) setTimeout(() => toast('Черновик закрытия восстановлен ✍️'), 400);
-    initPull();
     initKeyboard();
   } catch (e) { fail('🔒', esc(e.message), ''); }
 })();
