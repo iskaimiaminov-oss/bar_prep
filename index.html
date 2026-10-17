@@ -123,6 +123,24 @@
   .cl-row{display:flex;gap:8px;margin-bottom:8px}
   .cl-row input{flex:1}
 
+  /* ---------- фото ---------- */
+  .photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+  .ph{position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;background:var(--olive-soft);display:grid;place-items:center}
+  .ph img{width:100%;height:100%;object-fit:cover;display:block}
+  .ph .x{position:absolute;top:4px;right:4px;width:28px;height:28px;font-size:16px;border-radius:50%;background:rgba(10,51,32,.75);color:#fff}
+  .ph.loading img{opacity:.45}
+  .ph.loading::after{content:"";position:absolute;width:26px;height:26px;border:3px solid var(--cream);border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .ph.add{border:2px dashed var(--olive);background:var(--paper);color:var(--forest);font-weight:600;font-size:14px;cursor:pointer;text-align:center;line-height:1.2}
+  .ph.add b{display:block;font-size:28px;font-weight:400}
+  .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:30;display:grid;place-items:center;padding:16px}
+  .lightbox img{max-width:100%;max-height:100%;border-radius:8px}
+  .hcard{cursor:pointer}
+  .hmeta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chk-row{display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:15px}
+  .chk-row:last-child{border-bottom:0}
+  .chk-row.no{color:var(--danger)}
+
   /* ---------- админка ---------- */
   .edit{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
   .edit .top{display:flex;gap:8px;align-items:center}
@@ -172,7 +190,7 @@ const toNum = v => { const s = String(v).trim().replace(',', '.'); return s === 
 const ICONS = ['🍯','🍋','🫙','🧴','🍓','🌿','🥛','🍊','🫐','🍵'];
 const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % ICONS.length];
 
-let sel = new Set(), checks = new Set(), tkCards = null;
+let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
 let me = null, tab = 'count', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
 async function call(action, payload) {
@@ -182,6 +200,32 @@ async function call(action, payload) {
   const j = await r.json();
   if (j.error) throw new Error(j.error);
   return j;
+}
+async function post(action, payload) {
+  const r = await fetch(API, { method: 'POST', body: JSON.stringify({ action, initData: tg.initData, payload }) });
+  const j = await r.json();
+  if (j.error) throw new Error(j.error);
+  return j;
+}
+function compress(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('Не удалось открыть фото')); };
+    img.src = url;
+  });
+}
+function lightbox(src) {
+  const el = document.createElement('div'); el.className = 'lightbox';
+  el.innerHTML = `<img src="${src}" alt="">`; el.onclick = () => el.remove();
+  document.body.appendChild(el);
 }
 function toast(msg) {
   const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
@@ -321,11 +365,67 @@ function openTk(c, prep, amount) {
   document.body.appendChild(wrap);
   update();
 }
+const photoCache = {};
+async function openClosing(x) {
+  closeSheet();
+  await getCfg();
+  const byId = {}; cfg.preps.forEach(p => byId[p.id] = p);
+  const c = x.checks;
+  const chk = c ? (c.items ? c.items.map(i => `<div class="chk-row ${i.ok ? '' : 'no'}"><span>${i.ok ? '✅' : '❌'}</span><span>${esc(i.t)}</span></div>`).join('')
+      : (c.missing.length ? c.missing.map(t => `<div class="chk-row no"><span>❌</span><span>${esc(t)}</span></div>`).join('') : '<p class="sub">Всё отмечено ✅</p>')) : '';
+  const vals = Object.keys(x.values || {}).map(id => { const p = byId[id]; if (!p) return '';
+    return `<div class="hrow ${x.values[id] < p.min ? 'low' : ''}"><span>${esc(p.name)}</span><b>${fmt(x.values[id])} ${esc(p.unit)}</b></div>`; }).join('');
+  const ids = x.photos || [];
+  const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+  wrap.innerHTML = `<div class="sheet"><div class="grab"></div>
+    <h2>${new Date(x.date + 'T12:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' })}</h2>
+    <p class="sub" style="margin-top:4px">Закрыл(а): <b>${esc(x.by)}</b> · ${fmtTs(x.ts)}</p>
+    ${ids.length ? `<h3>Фото (${ids.length})</h3><div class="photos">${ids.map(id => `<div class="ph loading" data-pid="${esc(id)}"><img alt=""></div>`).join('')}</div>` : '<h3>Фото</h3><p class="sub">Фото не приложены</p>'}
+    ${c ? `<h3>Чек-лист ${c.done}/${c.total}</h3><div class="card" style="padding:4px 14px">${chk}</div>` : ''}
+    <h3>Остатки</h3><div class="card" style="padding:4px 14px">${vals || '<p class="sub">Нет данных</p>'}</div>
+    <button class="btn soft" id="closeSheet">Закрыть</button></div>`;
+  wrap.querySelector('#closeSheet').onclick = closeSheet;
+  wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+  document.body.appendChild(wrap);
+  wrap.querySelectorAll('[data-pid]').forEach(async el => {
+    const id = el.dataset.pid, img = el.querySelector('img');
+    try {
+      photoCache[id] = photoCache[id] || call('photo', { id }).then(r => r.data);
+      img.src = await photoCache[id]; el.classList.remove('loading');
+      img.onclick = () => lightbox(img.src);
+    } catch (e) { delete photoCache[id]; el.classList.remove('loading'); el.innerHTML = '<span class="sub" style="font-size:12px">не загрузилось</span>'; }
+  });
+}
+
 async function openTkForPrep(pid, amount) {
   const p = me.preps.find(x => x.id === pid);
   if (!p || !p.tk) return toast('Для этой заготовки техкарта не привязана');
   try { const c = (await getTk()).find(x => x.id === p.tk); if (!c) return toast('Техкарта не найдена в таблице'); openTk(c, p, amount); }
   catch (e) { toast(e.message); }
+}
+
+function photosGrid() {
+  return photos.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${p.src}" alt="" data-ph="${k}"><button class="x" data-phdel="${k}">×</button></div>`).join('') +
+    (photos.length < 10 ? `<label class="ph add" for="phinput"><span><b>+</b>Фото</span></label>` : '');
+}
+function bindPhotos() {
+  const grid = document.getElementById('phgrid'); if (!grid) return;
+  const redraw = () => { grid.innerHTML = photosGrid(); bindPhotos(); };
+  grid.querySelectorAll('[data-phdel]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.phdel, 1); redraw(); });
+  grid.querySelectorAll('[data-ph]').forEach(im => im.onclick = () => lightbox(im.src));
+  const inp = document.getElementById('phinput');
+  inp.onchange = async () => {
+    const files = [...inp.files].slice(0, 10 - photos.length); inp.value = '';
+    for (const f of files) {
+      let p;
+      try { p = { src: await compress(f), loading: true }; } catch (e) { toast(e.message); continue; }
+      photos.push(p); redraw();
+      post('photoUpload', { data: p.src })
+        .then(r => { p.id = r.id; p.loading = false; })
+        .catch(e => { toast('Фото не загрузилось: ' + e.message); photos.splice(photos.indexOf(p), 1); })
+        .finally(() => { if (document.getElementById('phgrid')) redraw(); });
+    }
+  };
 }
 
 function needRow(i) {
@@ -356,7 +456,9 @@ const views = {
     const cl = me.checklist || [];
     const clHtml = cl.length ? card(`<h2>Чек-лист закрытия</h2><p class="sub" id="clt">Отмечено ${checks.size} из ${cl.length}</p>` +
       cl.map((t, k) => `<div class="check ${checks.has(k) ? 'on' : ''}" data-ci="${k}"><div class="box">✓</div><div class="pname"><b>${esc(t)}</b></div></div>`).join('')) : '';
-    return clHtml + card(`<h2>Остатки заготовок</h2>${last}
+    const phHtml = card(`<h2>Фото закрытия</h2><p class="sub">Бар, витрина, мойка — до 10 фото</p><div class="photos" id="phgrid">${photosGrid()}</div>
+      <input type="file" id="phinput" accept="image/*" multiple style="display:none">`);
+    return clHtml + phHtml + card(`<h2>Остатки заготовок</h2>${last}
       <div class="progress"><i id="prog" style="width:0"></i></div><p class="sub" id="progt" style="margin:0 0 4px"></p>${rows}`) +
       `<div class="dock"><button class="btn" id="send">${cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'}</button></div>`;
   },
@@ -444,14 +546,20 @@ const views = {
 
   async history() {
     if (!hist) hist = (await call('history')).items;
-    await getCfg();
-    if (!hist.length) return empty('📜', 'Подсчётов пока нет', '');
-    const byId = {}; cfg.preps.forEach(p => byId[p.id] = p);
-    return hist.map(h => card(`<h2>${new Date(h.date + 'T12:00').toLocaleDateString('ru-RU',{day:'numeric',month:'long',weekday:'short'})}</h2><p class="sub">${esc(h.by)}, ${fmtTs(h.ts)}</p>` +
-      Object.keys(h.values).map(id => {
-        const p = byId[id]; if (!p) return '';
-        return `<div class="hrow ${h.values[id] < p.min ? 'low' : ''}"><span>${esc(p.name)}</span><b>${fmt(h.values[id])} ${esc(p.unit)}</b></div>`;
-      }).join(''))).join('');
+    if (!hist.length) return empty('📜', 'Закрытий пока нет', 'Здесь появится история каждого закрытия смены.');
+    const day = d => new Date(d + 'T12:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
+    return card(`<h2>История закрытий</h2><p class="sub">Последние 45 дней. Нажми, чтобы посмотреть подробно</p>`) +
+      hist.map((x, k) => {
+        const c = x.checks, okAll = c && c.done === c.total;
+        return `<div class="card hcard" data-h="${k}"><div style="display:flex;align-items:center;gap:12px">
+          <div class="pname"><b style="font-size:17px">${esc(day(x.date))}</b><span>${esc(x.by)} · ${new Date(x.ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span></div>
+          <span style="color:var(--muted);font-size:22px">›</span></div>
+          <div class="hmeta">
+            ${c ? `<span class="badge" style="${okAll ? '' : 'background:var(--warm-soft);color:var(--warm)'}">чек-лист ${c.done}/${c.total}</span>` : ''}
+            <span class="badge">📷 ${(x.photos || []).length}</span>
+            <span class="badge">остатки: ${Object.keys(x.values || {}).length}</span>
+          </div></div>`;
+      }).join('');
   }
 };
 
@@ -461,6 +569,7 @@ const binds = {
     if (again) again.onclick = () => { lastResult = null; render(); };
     const btn = document.getElementById('send'); if (!btn) return;
     const cl = me.checklist || [];
+    bindPhotos();
     document.querySelectorAll('[data-ci]').forEach(el => el.onclick = () => {
       const k = +el.dataset.ci;
       if (checks.has(k)) checks.delete(k); else checks.add(k);
@@ -485,11 +594,13 @@ const binds = {
       const values = {}; let emptyN = 0, bad = 0;
       inputs.forEach(i => { const v = toNum(i.value); if (v === '') emptyN++; else if (isNaN(v) || v < 0) bad++; else values[i.dataset.id] = v; });
       if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
+      if (photos.some(p => p.loading)) { toast('Подожди, фото ещё загружаются…'); return; }
+      if (!photos.length && !(await confirmBox('Фото закрытия не добавлены. Закрыть смену без фото?'))) return;
       const miss = cl.length - checks.size;
       if (miss > 0 && !(await confirmBox(`В чек-листе не отмечено пунктов: ${miss}. Всё равно закрыть смену?`))) return;
       if (emptyN && !(await confirmBox(`Не заполнено остатков: ${emptyN}. Отправить так?`))) return;
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values, checks: [...checks] }); draft = {}; checks.clear(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); }
+      try { lastResult = await call('count', { values, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id) }); draft = {}; checks.clear(); photos = []; hist = null; me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
@@ -559,7 +670,9 @@ const binds = {
       try { who = await call('whoToday'); render(); } catch (err) { toast(err.message); e.target.disabled = false; }
     };
   },
-  history() {},
+  history() {
+    document.querySelectorAll('[data-h]').forEach(el => el.onclick = () => openClosing(hist[+el.dataset.h]));
+  },
   tk() {
     document.querySelectorAll('[data-hide]').forEach(b => b.onclick = async e => {
       e.stopPropagation();
