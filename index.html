@@ -87,6 +87,7 @@
   .btn{display:block;width:100%;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:600;cursor:pointer;background:var(--forest);color:var(--cream);margin-top:14px;transition:transform .1s,opacity .2s}
   .btn:active{transform:scale(.98)}
   .btn:disabled{opacity:.5}
+  .btn.locked{opacity:.6;font-size:15px}
   .btn.soft{background:var(--olive-soft);color:var(--forest)}
   .btn.ok{background:var(--olive);color:var(--forest)}
   .dock{position:fixed;left:0;right:0;bottom:0;padding:12px 12px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--paper) 30%);z-index:6}
@@ -786,7 +787,7 @@ const views = {
     const cl = me.checklist || [];
     const clHtml = cl.length ? card(`<h2>Чек-лист закрытия</h2><p class="sub" id="clt">Отмечено ${checks.size} из ${cl.length}</p>` +
       cl.map((t, k) => `<div class="check ${checks.has(k) ? 'on' : ''}" data-ci="${k}"><div class="box">✓</div><div class="pname"><b>${esc(t)}</b></div></div>`).join('')) : '';
-    const phHtml = card(`<h2>Фото закрытия</h2><p class="sub">Бар, витрина, мойка — до 10 фото</p><div class="photos" id="phgrid">${photosGrid()}</div>
+    const phHtml = card(`<h2>Фото закрытия</h2><p class="sub">Бар, витрина, мойка — <b>минимум 3</b>, до 10 фото</p><div class="photos" id="phgrid">${photosGrid()}</div>
       <input type="file" id="phinput" accept="image/*" multiple style="display:none">`);
     return clHtml + phHtml + card(`<h2>Остатки заготовок</h2>${last}
       <div class="progress"><i id="prog" style="width:0"></i></div><p class="sub" id="progt" style="margin:0 0 4px"></p>${rows}`) +
@@ -976,14 +977,31 @@ const binds = {
       const k = +el.dataset.ci;
       if (checks.has(k)) checks.delete(k); else checks.add(k);
       el.classList.toggle('on', checks.has(k)); saveDraft();
-      document.getElementById('clt').textContent = `Отмечено ${checks.size} из ${cl.length}`;
+      document.getElementById('clt').textContent = `Отмечено ${checks.size} из ${cl.length}`; syncBtn();
       try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
     });
     const inputs = [...document.querySelectorAll('input[data-id]')];
+    // что ещё мешает закрыть смену
+    const MIN_PH = 3;
+    const missing = () => {
+      const m = [], cMiss = cl.length - checks.size, ph = photos.filter(p => p.id).length;
+      const vMiss = inputs.filter(i => i.value.trim() === '').length;
+      if (cMiss > 0) m.push(cMiss + ' ' + (cMiss === 1 ? 'пункт' : cMiss < 5 ? 'пункта' : 'пунктов'));
+      if (ph < MIN_PH) m.push((MIN_PH - ph) + ' фото');
+      if (vMiss > 0) m.push(vMiss + ' ' + (vMiss === 1 ? 'остаток' : vMiss < 5 ? 'остатка' : 'остатков'));
+      return m;
+    };
+    const syncBtn = () => {
+      const m = missing(), ready = !m.length && !photos.some(p => p.loading);
+      btn.classList.toggle('locked', !ready);
+      btn.textContent = ready ? '🌙 Закрыть смену' : photos.some(p => p.loading) ? '⏳ Загружаю фото…' : '🔒 Осталось: ' + m.join(' · ');
+    };
+    syncBtn.ref = setInterval(() => { if (!document.getElementById('send')) return clearInterval(syncBtn.ref); syncBtn(); }, 700);
     const upd = () => {
       const filled = inputs.filter(i => i.value.trim() !== '').length;
       document.getElementById('prog').style.width = (filled / inputs.length * 100) + '%';
       document.getElementById('progt').textContent = `Заполнено ${filled} из ${inputs.length}`;
+      syncBtn();
     };
     inputs.forEach(i => i.oninput = () => {
       draft[i.dataset.id] = i.value; saveDraft();
@@ -992,17 +1010,22 @@ const binds = {
       upd();
     });
     upd();
+    syncBtn();
     btn.onclick = async () => {
       const values = {}; let emptyN = 0, bad = 0;
       inputs.forEach(i => { const v = toNum(i.value); if (v === '') emptyN++; else if (isNaN(v) || v < 0) bad++; else values[i.dataset.id] = v; });
       if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
       if (photos.some(p => p.loading)) { toast('Подожди, фото ещё загружаются…'); return; }
-      if (!photos.length && !(await confirmBox('Фото закрытия не добавлены. Закрыть смену без фото?'))) return;
-      const miss = cl.length - checks.size;
-      if (miss > 0 && !(await confirmBox(`В чек-листе не отмечено пунктов: ${miss}. Всё равно закрыть смену?`))) return;
-      if (emptyN && !(await confirmBox(`Не заполнено остатков: ${emptyN}. Отправить так?`))) return;
+      const m = missing();
+      let force = false;
+      if (m.length) {
+        haptic('error');
+        if (!me.isAdmin) { toast('Чтобы закрыть смену, осталось: ' + m.join(', ')); return; }
+        if (!(await confirmBox('Не всё заполнено (' + m.join(', ') + '). Ты админ — закрыть смену всё равно?'))) return;
+        force = true;
+      }
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id) }); draft = {}; checks.clear(); photos = []; hist = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); }
+      try { lastResult = await call('count', { values, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force }); draft = {}; checks.clear(); photos = []; hist = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
