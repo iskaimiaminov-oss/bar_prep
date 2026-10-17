@@ -190,6 +190,7 @@ const toNum = v => { const s = String(v).trim().replace(',', '.'); return s === 
 const ICONS = ['🍯','🍋','🫙','🧴','🍓','🌿','🥛','🍊','🫐','🍵'];
 const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % ICONS.length];
 
+let orderDraft = {};
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
 let me = null, tab = 'count', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
@@ -245,6 +246,7 @@ function header() {
     <div class="hello">Привет, ${esc(first)} 👋</div></div>`;
 }
 function tabsList() {
+  if (me.orderer && !me.isAdmin) return [['order', 'Заказ']];
   const t = [['count', 'Закрытие'], ['today', 'Сегодня'], ['tk', 'Техкарты']];
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
   return t;
@@ -442,7 +444,7 @@ const views = {
         (items.length ? `<h3>Завтра нужно сварить</h3>` + items.map(needRow).join('') : `<div class="status"><span class="big">🌿</span>Всего хватает — завтра варить не нужно</div>`) +
         `<button class="btn soft" id="again">Изменить подсчёт</button>`);
     }
-    if (me.canClose === false) return empty('🌿', 'Ты не на смене, отдыхай', (me.closers && me.closers.length) ? 'Сегодня смену закрывает: ' + me.closers.map(esc).join(', ') : 'Смену закрывает вечерняя смена.');
+    if (me.canClose === false) return empty('🌿', 'Ты не на смене, отдыхай', (me.closers && me.closers.length) ? 'Сегодня смену закрывает: ' + me.closers.map(esc).join(', ') : 'Смену закрывают те, кто работает до 22:00 или 23:00.');
     if (!me.preps.length) return empty('🫙', 'Заготовок пока нет', me.isAdmin ? 'Добавь их во вкладке «Заготовки».' : 'Администратор ещё не добавил список.');
     const rows = me.preps.map(p => {
       const v = draft[p.id] != null ? draft[p.id] : '';
@@ -481,6 +483,20 @@ const views = {
     if (!t.items.length || t.items.every(i => made[i.pid])) return out;
     out += `<div class="dock"><button class="btn ok" id="made" ${sel.size ? '' : 'disabled'}>${sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'}</button></div>`;
     return out;
+  },
+
+  async order() {
+    const o = me.order || { date: '', items: {} };
+    if (!me.preps.length) return empty('🫙', 'Заготовок пока нет', 'Администратор ещё не добавил список.');
+    const when = o.date ? new Date(o.date + 'T12:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+    const has = Object.keys(o.items).length;
+    const rows = me.preps.map(p => {
+      const v = orderDraft[p.id] != null ? orderDraft[p.id] : (o.items[p.id] != null ? String(o.items[p.id]) : '');
+      return `<div class="prow"><div class="pname"><b>${esc(p.name)}</b></div>
+        <label class="field"><input inputmode="decimal" data-oid="${esc(p.id)}" value="${esc(v)}" placeholder="0"><small>${esc(p.unit)}</small></label></div>`;
+    }).join('');
+    return card(`<h2>Заказ заготовок</h2><p class="sub">Впиши, сколько нужно. Заказ уйдёт в группу бара <b>${esc(when)} в 08:00</b>.${has ? ' Заказ уже сохранён — можно изменить до отправки.' : ''}</p>${rows}`) +
+      `<div class="dock"><button class="btn" id="sendOrder">${has ? 'Обновить заказ' : 'Отправить заказ'}</button></div>`;
   },
 
   async tk() {
@@ -670,6 +686,19 @@ const binds = {
       try { who = await call('whoToday'); render(); } catch (err) { toast(err.message); e.target.disabled = false; }
     };
   },
+  order() {
+    document.querySelectorAll('[data-oid]').forEach(i => i.oninput = () => { orderDraft[i.dataset.oid] = i.value; });
+    const btn = document.getElementById('sendOrder'); if (!btn) return;
+    btn.onclick = async () => {
+      const items = {}; let bad = 0;
+      document.querySelectorAll('[data-oid]').forEach(i => { const v = toNum(i.value); if (v === '') return; if (isNaN(v) || v < 0) bad++; else if (v > 0) items[i.dataset.oid] = v; });
+      if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
+      if (!Object.keys(items).length && !(await confirmBox('Заказ пустой. Отменить заказ на завтра?'))) return;
+      btn.disabled = true; btn.textContent = 'Отправляю…';
+      try { await call('order', { items }); orderDraft = {}; me = await call('me'); haptic('success'); toast(Object.keys(items).length ? 'Заказ сохранён ✅' : 'Заказ отменён'); render(); }
+      catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Отправить заказ'; }
+    };
+  },
   history() {
     document.querySelectorAll('[data-h]').forEach(el => el.onclick = () => openClosing(hist[+el.dataset.h]));
   },
@@ -700,6 +729,7 @@ const binds = {
     me = await call('me');
     const h = new Date().getHours();
     if (me.today && me.today.items.length && !me.today.done && h >= 12 && h < 20) tab = 'today';
+    if (me.orderer && !me.isAdmin) tab = 'order';
     render();
     prefetch();
   } catch (e) { fail('🔒', esc(e.message), ''); }
