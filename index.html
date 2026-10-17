@@ -154,6 +154,27 @@
   .evd small{font-size:11px;text-transform:uppercase;opacity:.8}
   .tabcount{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--warm);color:#fff;font-size:11px;margin-left:5px;vertical-align:1px}
 
+  /* ---------- график по дням ---------- */
+  .dayhead{display:flex;align-items:center;gap:8px}
+  .dayhead .grow{flex:1;text-align:center}
+  .dayhead h2{margin:0}
+  .navb{width:38px;height:38px;border-radius:50%;border:0;background:var(--olive-soft);color:var(--forest);font-size:22px;line-height:1;cursor:pointer;flex:0 0 auto}
+  .navb:disabled{opacity:.3}
+  .strip{display:flex;gap:6px;overflow-x:auto;margin:12px -16px 4px;padding:2px 16px 6px;scrollbar-width:none;scroll-snap-type:x proximity}
+  .strip::-webkit-scrollbar{display:none}
+  .dchip{flex:0 0 46px;border:0;border-radius:14px;padding:7px 0;background:var(--paper);color:var(--forest);text-align:center;cursor:pointer;scroll-snap-align:center;line-height:1.15}
+  .dchip small{display:block;font-size:11px;color:var(--muted);text-transform:uppercase}
+  .dchip b{font-size:17px}
+  .dchip.today{box-shadow:inset 0 0 0 2px var(--olive)}
+  .dchip.on{background:var(--forest);color:var(--cream)}
+  .dchip.on small{color:var(--olive-2)}
+  .dchip.wk{margin-left:8px}
+  #dayBody{touch-action:pan-y;transition:transform .22s ease,opacity .22s ease}
+  #dayBody.out-l{transform:translateX(-30px);opacity:0}
+  #dayBody.out-r{transform:translateX(30px);opacity:0}
+  .wip{text-align:center;padding:26px 10px 18px;color:var(--muted)}
+  .wip b{display:block;font-size:17px;color:var(--forest);margin:8px 0 4px}
+
   /* ---------- смена ---------- */
   .shift{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
   .shift:last-child{border-bottom:0}
@@ -502,18 +523,81 @@ const formKeep = {};
 function keepForm(p) { document.querySelectorAll(`[id^="${p}"]`).forEach(el => { if ('value' in el) formKeep[el.id] = el.value; }); }
 function restoreForm(p) { Object.keys(formKeep).filter(k => k[0] === p).forEach(k => { const el = document.getElementById(k); if (el) el.value = formKeep[k]; }); }
 
+// ===== График по дням (листается свайпом) =====
+const DAYS_BACK = 21, DAYS_FWD = 21;
+const shiftCache = {}, shiftLoading = {};
+let curDay = null;
+const addD = (date, n) => { const d = new Date(date + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const diffD = (a, b) => Math.round((new Date(a + 'T12:00:00Z') - new Date(b + 'T12:00:00Z')) / 864e5);
+const wdS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+function loadShift(date) {
+  if (shiftCache[date] !== undefined) return Promise.resolve(shiftCache[date]);
+  if (!shiftLoading[date]) shiftLoading[date] = call('shiftDay', { date }).then(r => (shiftCache[date] = r.list)).catch(e => { delete shiftLoading[date]; throw e; });
+  return shiftLoading[date];
+}
 function shiftCard() {
-  const list = me.shift || [];
-  if (!list.length) return card(`<h2>На смене сегодня</h2><p class="sub">В графике на сегодня никого не нашёл</p>`);
+  const today = me.today.date;
+  if (!curDay) curDay = today;
+  if (shiftCache[today] === undefined) shiftCache[today] = me.shift === undefined ? null : me.shift;
+  let chips = '';
+  for (let i = -DAYS_BACK; i <= DAYS_FWD; i++) {
+    const d = addD(today, i), dt = new Date(d + 'T12:00:00Z');
+    chips += `<button class="dchip ${d === today ? 'today' : ''} ${d === curDay ? 'on' : ''} ${dt.getUTCDay() === 1 && i !== -DAYS_BACK ? 'wk' : ''}" data-day="${d}"><small>${wdS[dt.getUTCDay()]}</small><b>${dt.getUTCDate()}</b></button>`;
+  }
+  return `<div class="card" id="shiftCard"><div class="dayhead">
+      <button class="navb" id="dPrev">‹</button><div class="grow"><h2>На смене</h2><p class="sub" id="dTitle" style="margin:2px 0 0"></p></div><button class="navb" id="dNext">›</button></div>
+    <div class="strip" id="strip">${chips}</div><div id="dayBody"></div></div>`;
+}
+function dayRows(date, list) {
+  const today = me.today.date, isToday = date === today;
+  if (list === undefined) return `<div class="wip">Загружаю…</div>`;
+  if (list === null || (!list.length && date >= today)) return `<div class="wip"><div class="big">✍️</div><b>График в процессе</b>Расписание на этот день ещё не готово</div>`;
+  if (!list.length) return `<div class="wip"><div class="big">🌙</div><b>Никого в графике</b></div>`;
   const now = me.now || 0, t = m => Math.floor(m / 60) % 24 + ':' + String(m % 60).padStart(2, '0');
-  const rows = list.map(x => {
-    const cls = now >= x.from && now < x.to ? 'now' : now >= x.to ? 'past' : '';
+  return `<p class="sub" style="margin:4px 0 0">${list.length} ${list.length === 1 ? 'человек' : list.length < 5 ? 'человека' : 'человек'} на смене</p>` + list.map(x => {
+    const cls = isToday ? (now >= x.from && now < x.to ? 'now' : now >= x.to ? 'past' : '') : '';
+    const sub = isToday ? (cls === 'now' ? 'сейчас на смене' : cls === 'past' ? 'смена закончилась' : 'придёт в ' + t(x.from)) : (x.from < 12 * 60 ? 'утро' : 'вечер');
     return `<div class="shift ${cls}"><div class="ava">${esc(String(x.name)[0] || '?')}</div>
-      <div class="pname"><b>${esc(x.name)}${stBadge(statusOf(x.name))}${x.role ? `<span class="mini">${esc(x.role)}</span>` : ''}${x.to >= 22 * 60 ? '<span class="mini close">закрывает</span>' : ''}</b>
-      <span>${cls === 'now' ? 'сейчас на смене' : cls === 'past' ? 'смена закончилась' : 'придёт в ' + t(x.from)}</span></div>
-      <span class="time">${t(x.from)} – ${t(x.to)}</span></div>`;
+      <div class="pname"><b>${esc(x.name)}${x.name === me.name ? ' <span class="mini">ты</span>' : ''}${stBadge(statusOf(x.name))}${x.role ? `<span class="mini">${esc(x.role)}</span>` : ''}${x.to >= 22 * 60 ? '<span class="mini close">закрывает</span>' : ''}</b>
+      <span>${sub}</span></div><span class="time">${t(x.from)} – ${t(x.to)}</span></div>`;
   }).join('');
-  return card(`<h2>На смене сегодня</h2><p class="sub">${new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}</p>${rows}`);
+}
+function drawDay(dir) {
+  const body = document.getElementById('dayBody'); if (!body) return;
+  const today = me.today.date, dt = new Date(curDay + 'T12:00:00Z'), diff = diffD(curDay, today);
+  document.getElementById('dTitle').textContent = dt.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }) +
+    (diff === 0 ? ' · сегодня' : diff === 1 ? ' · завтра' : diff === -1 ? ' · вчера' : '');
+  document.getElementById('dPrev').disabled = diff <= -DAYS_BACK;
+  document.getElementById('dNext').disabled = diff >= DAYS_FWD;
+  document.querySelectorAll('.dchip').forEach(c => c.classList.toggle('on', c.dataset.day === curDay));
+  const strip = document.getElementById('strip'), on = strip.querySelector('.dchip.on');
+  if (on) strip.scrollTo({ left: on.offsetLeft - strip.offsetLeft - (strip.clientWidth - on.offsetWidth) / 2, behavior: dir ? 'smooth' : 'auto' });
+  const paint = () => { if (document.getElementById('dayBody')) body.innerHTML = dayRows(curDay, shiftCache[curDay]); };
+  const want = curDay;
+  if (dir) { body.classList.add(dir > 0 ? 'out-l' : 'out-r'); setTimeout(() => { paint(); body.classList.remove('out-l', 'out-r'); }, 160); } else paint();
+  if (shiftCache[curDay] === undefined) loadShift(curDay).then(() => { if (curDay === want) paint(); }).catch(() => { if (curDay === want) body.innerHTML = '<div class="wip">Не удалось загрузить</div>'; });
+  [-1, 1, -2, 2].forEach(k => { const d = addD(curDay, k); if (Math.abs(diffD(d, today)) <= DAYS_BACK) loadShift(d).catch(() => {}); });
+}
+function goDay(n) {
+  const nd = addD(curDay, n), diff = diffD(nd, me.today.date);
+  if (diff < -DAYS_BACK || diff > DAYS_FWD) return;
+  curDay = nd; drawDay(n);
+  try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
+}
+function bindShift() {
+  if (!document.getElementById('shiftCard')) return;
+  document.getElementById('dPrev').onclick = () => goDay(-1);
+  document.getElementById('dNext').onclick = () => goDay(1);
+  document.querySelectorAll('.dchip').forEach(c => c.onclick = () => { const n = diffD(c.dataset.day, curDay); if (n) goDay(n); });
+  const body = document.getElementById('dayBody');
+  let x0 = null, y0 = null;
+  body.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+  body.addEventListener('touchend', e => {
+    if (x0 == null) return;
+    const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3) goDay(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  drawDay(0);
 }
 
 function needRow(i) {
@@ -764,6 +848,7 @@ const binds = {
     };
   },
   today() {
+    bindShift();
     document.querySelectorAll('[data-tk]').forEach(b => b.onclick = e => { e.stopPropagation(); openTkForPrep(b.dataset.tk, toNum(b.dataset.amt)); });
     const btn = document.getElementById('made'); if (!btn) return;
     const sync = () => { btn.disabled = !sel.size; btn.textContent = sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'; };
