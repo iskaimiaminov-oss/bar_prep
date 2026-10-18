@@ -114,6 +114,33 @@
   details.card[open]>summary::after{transform:rotate(90deg)}
   details.card[open]>summary{margin-bottom:4px}
   .dock.hide{display:none}
+  /* холодильник */
+  .batch{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .batch:last-child{border-bottom:0}
+  .batch .acts{display:flex;gap:6px;flex:0 0 auto}
+  .days.frz{background:#DCE6F0;color:#3B5872}
+  html[data-theme="dark"] .days.frz{background:#1E2B38;color:#A9C4DE}
+  .frzline{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px}
+  .frzline em{font-style:normal;font-size:13px;color:var(--muted)}
+  .switch{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:14px;cursor:pointer}
+  .switch input,.edit .switch input{width:20px;height:20px;flex:0 0 20px;padding:0;accent-color:var(--forest);margin:0}
+  /* профиль */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  .stat{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:10px 8px;text-align:center}
+  .stat b{display:block;font-size:22px;font-weight:600}
+  .stat span{font-size:12px;color:var(--muted)}
+  .badges{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+  .badge2{border:1px solid var(--line);border-radius:14px;padding:10px 6px;text-align:center;background:var(--card)}
+  .badge2 .ic{font-size:28px;line-height:1.2}
+  .badge2 b{display:block;font-size:13px;font-weight:600;margin-top:4px;line-height:1.2}
+  .badge2 small{display:block;font-size:11px;color:var(--muted);margin-top:3px;line-height:1.2}
+  .badge2.off{opacity:.55}
+  .badge2.off .ic{filter:grayscale(1)}
+  .badge2 .bar{height:4px;background:var(--olive-soft);border-radius:4px;margin-top:6px;overflow:hidden}
+  .badge2 .bar i{display:block;height:100%;background:var(--olive)}
+  .bk-when{flex:0 0 56px;height:60px;border-radius:14px;background:var(--olive);color:var(--forest);display:grid;place-items:center;text-align:center;line-height:1.05}
+  .bk-when b{font-size:18px;display:block}
+  .bk-when small{font-size:11px;opacity:.8}
   .shelf{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
   .shelf:last-child{border-bottom:0}
   .days{font-weight:600;padding:5px 11px;border-radius:999px;background:var(--olive-soft);white-space:nowrap;font-size:14px}
@@ -290,6 +317,8 @@ let homeData = null, homeP = null, probPhotos = [];
 let orderDraft = {}, taskData = null, evData = null, taskForm = { mode: 'all', statuses: [], ids: [] }, evForm = { mode: 'all', statuses: [], ids: [] };
 let yv = {};   // итоговый выход, который вписали (pid → текст)
 let extraOpen = null;   // блок «Сварил что-то ещё» открыт/закрыт (null — по умолчанию)
+let fzv = {};           // сколько из сваренного ушло в морозилку (pid → текст)
+let fridgeData = null, bkData = null, cardData = null, cardName = null, bkOpen = false;
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
 let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
@@ -352,8 +381,8 @@ function header() {
 function tabsList() {
   if (me.orderer && !me.isAdmin) return [['order', 'Заказ']];
   const tasksLbl = 'Задачи' + (me.openTasks ? `<span class="tabcount">${me.openTasks}</span>` : '');
-  if (me.isViewer) return [['today', 'Сегодня'], ['tasks', tasksLbl], ['events', 'События'], ['history', 'История'], ['tk', 'Техкарты']];
-  const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['tasks', tasksLbl], ['events', 'События'], ['tk', 'Техкарты']];
+  if (me.isViewer) return [['today', 'Сегодня'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['history', 'История'], ['tk', 'Техкарты'], ['profile', 'Профиль']];
+  const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['tk', 'Техкарты'], ['profile', 'Профиль']];
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
   return t;
 }
@@ -778,9 +807,30 @@ function bindShift() {
   drawDay(0);
 }
 
+// Окошко «сколько?» снизу экрана. Возвращает число или null, если закрыли
+function askQty(title, sub, def, unit, okText) {
+  return new Promise(res => {
+    closeSheet();
+    const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+    wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>${esc(title)}</h2>${sub ? `<p class="sub" style="margin-top:4px">${sub}</p>` : ''}
+      <div class="amount"><span>Количество</span><input id="askq" inputmode="decimal" value="${esc(def != null && def !== '' ? fmt(def) : '')}" placeholder="0"><b>${esc(unit || '')}</b></div>
+      <button class="btn" id="askOk">${esc(okText || 'Готово')}</button><button class="btn soft" id="askNo">Отмена</button></div>`;
+    document.body.appendChild(wrap);
+    const done = v => { closeSheet(); res(v); };
+    const inp = wrap.querySelector('#askq');
+    setTimeout(() => { inp.focus(); inp.select(); }, 60);
+    wrap.querySelector('#askNo').onclick = () => done(null);
+    wrap.onclick = e => { if (e.target === wrap) done(null); };
+    wrap.querySelector('#askOk').onclick = () => { const v = toNum(inp.value); if (v === '' || !(v > 0)) { toast('Впиши количество'); inp.focus(); return; } done(v); };
+  });
+}
+
+// Срок хранения из техкарты в днях («7 суток» → 7) — подсказка в редакторе заготовок
+function tkShelf(cards, tk) { const c = (cards || []).find(x => x.id === tk), m = c && String(c.shelf || '').match(/(\d+)\s*(сут|дн|день|дней)/i); return m ? m[1] : ''; }
+
 function needRow(i) {
   return `<div class="need"><div class="dot">${esc(String(i.name).trim()[0] || '•').toUpperCase()}</div>
-    <div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span></div>
+    <div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}${i.frozen > 0 ? ' · ❄️ в морозилке ' + fmt(i.frozen) : ''}</span></div>
     <div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div></div>`;
 }
 
@@ -823,13 +873,17 @@ const views = {
     const hasTk = pid => { const p = me.preps.find(x => x.id === pid); return p && p.tk; };
     let out = shiftCard() + '<div id="homeExtra"></div>';
     const ro = me.isViewer;
-    const madeRow = i => `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>сварил(а) ${esc(made[i.pid])}${ylds[i.pid] != null ? ' · выход ' + fmt(ylds[i.pid]) + ' ' + esc(i.unit) : ''}</span></div></div>`;
+    const thawed = t.thawed || {};
+    const madeRow = i => `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>${thawed[i.pid] ? '❄️ разморозил(а)' : 'сварил(а)'} ${esc(made[i.pid])}${ylds[i.pid] != null ? ' · ' + (thawed[i.pid] ? '' : 'выход ') + fmt(ylds[i.pid]) + ' ' + esc(i.unit) : ''}</span></div></div>`;
+    // заготовки, которые замораживают: при отметке — сколько из сваренного ушло в морозилку
+    const isFrz = pid => { const p = me.preps.find(x => x.id === pid); return p && p.frz; };
+    const fzField = (pid, unit) => isFrz(pid) ? `<label class="yld"><em>❄️ Из них в морозилку</em><span class="field"><input data-fz="${esc(pid)}" inputmode="decimal" placeholder="0" value="${esc(fzv[pid] != null ? fzv[pid] : '')}"><small>${esc(unit)}</small></span></label>` : '';
     if (t.items.length) {
       // у выбранной заготовки — поле «Итоговый выход» (сразу стоит план, поправить, если вышло иначе)
       const rows = ro ? t.items.map(i => made[i.pid] ? madeRow(i) : needRow(i)).join('') : t.items.map(i => made[i.pid]
         ? madeRow(i)
-        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" ${ro ? 'style="cursor:default"' : `data-pid="${esc(i.pid)}"`}><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span>
-            <label class="yld"><em>Итоговый выход</em><span class="field"><input data-y="${esc(i.pid)}" inputmode="decimal" enterkeyhint="done" value="${esc(yv[i.pid] != null ? yv[i.pid] : fmt(i.need))}"><small>${esc(i.unit)}</small></span></label></div><div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div>${hasTk(i.pid) ? `<button class="tkbtn" data-tk="${esc(i.pid)}" data-amt="${i.need}">ТК</button>` : ''}</div>`).join('');
+        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" ${ro ? 'style="cursor:default"' : `data-pid="${esc(i.pid)}"`}><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span>${i.frozen > 0 ? `<span style="display:block;color:#3B5872;margin-top:2px">❄️ в морозилке ${fmt(i.frozen)} ${esc(i.unit)}</span><button class="tkbtn" data-thaw="${esc(i.pid)}" data-amt="${Math.min(i.need, i.frozen)}" style="margin-top:8px">❄️ Не варил, а разморозил</button>` : ''}
+            <label class="yld"><em>Итоговый выход</em><span class="field"><input data-y="${esc(i.pid)}" inputmode="decimal" enterkeyhint="done" value="${esc(yv[i.pid] != null ? yv[i.pid] : fmt(i.need))}"><small>${esc(i.unit)}</small></span></label>${fzField(i.pid, i.unit)}</div><div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div>${hasTk(i.pid) ? `<button class="tkbtn" data-tk="${esc(i.pid)}" data-amt="${i.need}">ТК</button>` : ''}</div>`).join('');
       const allDone = t.items.every(i => made[i.pid]);
       out += card(`<h2>Сварить сегодня</h2><p class="sub">${allDone ? 'Всё готово — спасибо! 🎉' : ro ? 'Что нужно сварить по последнему подсчёту' : 'Отметь, что сварил(а)'}</p>${rows}`);
     } else if (t.done && t.done.none) {
@@ -847,7 +901,7 @@ const views = {
       const madeCnt = extras.filter(x => made[x.pid]).length;
       const rowsX = extras.map(x => made[x.pid] ? madeRow(x)
         : `<div class="check ${sel.has(x.pid) ? 'on' : ''}" data-pid="${esc(x.pid)}"><div class="box">✓</div><div class="pname"><b>${esc(x.name)}</b><span>${lastV[x.pid] != null ? 'по подсчёту осталось ' + fmt(lastV[x.pid]) + ' ' + esc(x.unit) : 'не было в списке'}</span>
-            <label class="yld"><em>Итоговый выход</em><span class="field"><input data-y="${esc(x.pid)}" inputmode="decimal" enterkeyhint="done" placeholder="0" value="${esc(yv[x.pid] != null ? yv[x.pid] : '')}"><small>${esc(x.unit)}</small></span></label></div></div>`).join('');
+            <label class="yld"><em>Итоговый выход</em><span class="field"><input data-y="${esc(x.pid)}" inputmode="decimal" enterkeyhint="done" placeholder="0" value="${esc(yv[x.pid] != null ? yv[x.pid] : '')}"><small>${esc(x.unit)}</small></span></label>${fzField(x.pid, x.unit)}</div></div>`).join('');
       out += `<details class="card" id="extraBox" ${open ? 'open' : ''}><summary><div class="pname"><h2>${t.items.length ? 'Сварил что-то ещё?' : 'Сварил заготовку?'}</h2>
         <p class="sub">${madeCnt ? 'Отмечено сверх списка: ' + madeCnt : 'Отметь, если сварил(а) то, чего не было в списке'}</p></div></summary>${rowsX}</details>`;
     }
@@ -880,15 +934,30 @@ const views = {
   },
 
   async events() {
-    if (!evData) evData = await call('events');
+    [evData, bkData] = await Promise.all([evData || call('events'), bkData || call('bookings')]);
     const d = evData;
     const mon = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    // --- брони столов ---
+    const todayD = new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10), tmrD = addD(todayD, 1);
+    const bkDay = dt => dt === todayD ? 'сегодня' : dt === tmrD ? 'завтра' : new Date(dt + 'T12:00').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
+    const bkRows = bkData.bookings.map(b => `<div class="ev"><div class="bk-when"><div><b>${esc(b.time)}</b><small>${esc(bkDay(b.date))}</small></div></div>
+        <div class="pname"><b>${esc(b.guest)} · ${b.people} ${b.people % 10 === 1 && b.people % 100 !== 11 ? 'гость' : [2, 3, 4].indexOf(b.people % 10) >= 0 && (b.people % 100 < 12 || b.people % 100 > 14) ? 'гостя' : 'гостей'}</b>
+        <span>${b.phone ? `📞 <a href="tel:${esc(b.phone.replace(/[^\d+]/g, ''))}" style="color:inherit">${esc(b.phone)}</a> · ` : ''}внёс(ла) ${esc(b.byName)}</span>
+        ${b.note ? `<span style="display:block;margin-top:4px;color:var(--forest-2)">💬 ${esc(b.note)}</span>` : ''}</div>
+        ${b.canDel ? `<button class="x" data-bkdel="${esc(b.id)}">×</button>` : ''}</div>`).join('');
+    let bk = card(`<h2>📌 Брони</h2><p class="sub">${bkData.bookings.length ? 'За час до брони бот напомнит в группе и отметит тех, кто на смене' : 'Броней пока нет. За час до брони бот напомнит в группе и отметит тех, кто на смене'}</p>${bkRows}`);
+    if (bkData.canAdd) bk += `<details class="card" id="bkBox" ${bkOpen ? 'open' : ''}><summary><div class="pname"><h2>＋ Новая бронь</h2><p class="sub">Гость забронировал стол — внеси сюда</p></div></summary><div class="form">
+        <label>На кого<input id="bGuest" placeholder="Имя гостя"></label>
+        <div class="two"><label>Гостей<input id="bPeople" inputmode="numeric" placeholder="2"></label><label>Телефон<input id="bPhone" inputmode="tel" placeholder="необязательно"></label></div>
+        <div class="two"><label>Дата<input id="bDate" type="date" min="${todayD}" value="${todayD}"></label><label>Время<input id="bTime" type="time" value="19:00"></label></div>
+        <label>Комментарий<textarea id="bNote" rows="2" placeholder="Стол у окна, день рождения, детский стул…"></textarea></label>
+        <button class="btn" id="bkAdd">Добавить бронь</button></div></details>`;
     const list = d.events.map(e => { const dt = new Date(e.date + 'T12:00');
       return `<div class="ev"><div class="evd"><div><b>${dt.getDate()}</b><small>${mon[dt.getMonth()]}</small></div></div>
         <div class="pname"><b>${esc(e.title)}</b><span>${dt.toLocaleDateString('ru-RU', { weekday: 'long' })} в ${esc(e.time)} · 👥 ${esc(e.to)}</span>
         ${e.note ? `<span style="display:block;margin-top:4px;color:var(--forest-2)">${esc(e.note)}</span>` : ''}</div>
         ${e.canDel ? `<button class="x" data-edel="${esc(e.id)}">×</button>` : ''}</div>`; }).join('');
-    let out = card(`<h2>События</h2><p class="sub">${d.events.length ? 'Ближайшие собрания и встречи' : 'Пока ничего не запланировано'}</p>${list}`);
+    let out = bk + card(`<h2>События</h2><p class="sub">${d.events.length ? 'Ближайшие собрания и встречи' : 'Пока ничего не запланировано'}</p>${list}`);
     if (d.canCreate) {
       const today = new Date(Date.now() + 5 * 3600e3).toISOString().slice(0, 10);
       out += card(`<h2>Новое событие</h2><div class="form">
@@ -930,6 +999,48 @@ const views = {
     return out;
   },
 
+  async fridge() {
+    if (!fridgeData) fridgeData = await call('fridge');
+    const d = fridgeData, now = Date.now(), ed = d.canEdit;
+    const pl = (n, a, b, c) => { const m = n % 10, h = n % 100; return h > 10 && h < 20 ? c : m === 1 ? a : m > 1 && m < 5 ? b : c; };
+    const badge = x => {
+      if (!x.exp) return '<span class="days">срок не указан</span>';
+      const L = (x.exp - now) / 864e5;
+      if (L < 0) return '<span class="days today">срок истёк</span>';
+      const n = Math.ceil(L);
+      if (x.state === 'f') return `<span class="days frz">❄️ ${n} ${pl(n, 'день', 'дня', 'дней')}</span>`;
+      return `<span class="days ${n <= 1 ? 'today' : n <= 2 ? 'soon' : ''}">${n <= 1 ? 'последний день' : 'ещё ' + n + ' ' + pl(n, 'день', 'дня', 'дней')}</span>`;
+    };
+    const dd = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    const row = x => `<div class="batch"><div class="pname"><b>${esc(x.name)} · ${fmt(x.q)} ${esc(x.unit)}</b><span>${x.state === 'f' ? 'заморозил(а)' : 'от'} ${esc(dd(x.made))}${x.by ? ' · ' + esc(x.by) : ''}</span>
+        ${ed ? `<div class="acts" style="margin-top:8px">${x.state === 'f'
+          ? `<button class="tkbtn" data-bthaw="${esc(x.pid)}">❄️ Разморозить</button>`
+          : `<button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`}</div>` : ''}</div>${badge(x)}</div>`;
+    const work = d.batches.filter(x => x.state === 'w'), frozen = d.batches.filter(x => x.state === 'f');
+    let out = card(`<h2>🧊 В работе</h2><p class="sub">${work.length ? 'Сверху — то, что истекает раньше. Остатки обновляются сами по подсчёту на закрытии' : 'Партии появятся, когда сотрудники отметят сваренные заготовки'}</p>${work.map(row).join('')}`);
+    if (d.frz.length || frozen.length) {
+      out += card(`<h2>❄️ В морозилке</h2><p class="sub">${frozen.length ? 'Срок хранения после разморозки считается с дня разморозки' : 'Пока пусто'}</p>${frozen.map(row).join('')}` +
+        (ed ? d.frz.map(p => `<button class="btn soft" data-bfreeze="${esc(p.id)}" style="padding:11px">＋ Положить в морозилку: ${esc(p.name)}</button>`).join('') : ''));
+    }
+    return out;
+  },
+
+  async profile() {
+    const want = cardName || me.name;
+    if (!cardData || cardData.name !== want) cardData = await call('card', cardName ? { name: cardName } : null);
+    const c = cardData, s = c.stats, mo = c.month;
+    const got = c.badges.filter(b => b.got).length;
+    const who = c.people && c.people.length ? `<label class="sub" style="display:block;margin:0 0 10px">Чья карточка<select id="cardWho" style="margin-top:6px">${[me.name].concat(c.people.filter(n => n !== me.name)).map(n => `<option ${n === want ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` : '';
+    const tile = (v, l) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`;
+    const badges = c.badges.slice().sort((a, b) => b.got - a.got).map(b => `<div class="badge2 ${b.got ? '' : 'off'}"><div class="ic">${b.icon}</div><b>${esc(b.title)}</b><small>${esc(b.desc)}</small>
+      ${b.got ? '' : `<div class="bar"><i style="width:${Math.round(b.have / b.goal * 100)}%"></i></div><small>${b.have} из ${b.goal}</small>`}</div>`).join('');
+    return card(`${who}<div style="display:flex;align-items:center;gap:14px"><div class="ava" style="width:56px;height:56px;font-size:24px">${esc(String(c.name)[0] || '?')}</div>
+        <div class="pname"><b style="font-size:20px">${esc(c.name)}</b>${stBadge(c.status).replace('margin-left:6px', '')}<span style="display:block;margin-top:4px">${c.rank ? '🏅 ' + c.rank.pos + '-е место по заготовкам за 2 недели (из ' + c.rank.of + ')' : 'Сваришь заготовку — попадёшь в рейтинг'}</span></div></div>
+        <h3>За 30 дней</h3><div class="stats">${tile(mo.m, 'заготовок')}${tile(mo.c, 'закрытий')}${tile(mo.pf, 'идеальных')}</div>
+        <h3>За всё время</h3><div class="stats">${tile(s.m, 'заготовок')}${tile(s.c, 'закрытий')}${tile(s.pf, 'идеальных')}${tile(s.t, 'задач')}${tile(s.sw, 'замен')}${tile(s.pr, 'проблем найдено')}</div>`) +
+      card(`<h2>Достижения</h2><p class="sub">Открыто ${got} из ${c.badges.length}</p><div class="badges">${badges}</div>`);
+  },
+
   async preps() {
     await getCfg();
     let cards = [];
@@ -948,6 +1059,11 @@ const views = {
         <div class="grid3" style="grid-template-columns:1fr">
           <label>Техкарта<select data-f="tk"><option value="">— нет —</option>${cards.filter(c => !c.hidden || p.tk === c.id).map(c => `<option value="${esc(c.id)}" ${p.tk === c.id ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}</select></label>
         </div>
+        <div class="grid3" style="grid-template-columns:1fr 1fr">
+          <label>${p.frz ? 'Хранится после разморозки, дней' : 'Срок хранения, дней'}<input data-f="shelf" inputmode="numeric" value="${esc(p.shelf || '')}" placeholder="${esc(tkShelf(cards, p.tk) || '—')}"></label>
+          ${p.frz ? `<label>В морозилке, дней<input data-f="frzDays" inputmode="numeric" value="${esc(p.frzDays || '')}" placeholder="30"></label>` : '<span></span>'}
+        </div>
+        <label class="switch"><input type="checkbox" data-f="frz" ${p.frz ? 'checked' : ''}> ❄️ Замораживаем (часть кладут в морозилку)</label>
       </div>`).join('');
     const cl = cfg.checklist || [];
     let usage = '';
@@ -956,7 +1072,7 @@ const views = {
         <div class="sub" style="margin:4px 0 0">${x.n < 3 ? 'Мало данных — нужно ещё несколько закрытий' : `будни ≈ <b>${x.wd != null ? fmt(x.wd) + ' ' + esc(x.unit) : '—'}</b> · пт–вс ≈ <b>${x.we != null ? fmt(x.we) + ' ' + esc(x.unit) : '—'}</b> · норма ${fmt(x.norm)} ${esc(x.unit)}`}</div>
         ${x.hint && x.n >= 3 ? `<div style="margin-top:6px;color:var(--warm);font-size:14px">💡 ${esc(x.hint)}</div>` : ''}</div>`).join(''));
     } catch (e) {}
-    return usage + card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. Техкарта — рецепт из таблицы, выход для пересчёта берётся из строки «Выход» в техкарте.</p>
+    return usage + card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. Техкарта — рецепт из таблицы, выход для пересчёта берётся из строки «Выход» в техкарте. Срок хранения — для напоминаний в «Холодильнике»; пусто — берётся из техкарты (серая цифра).</p>
       ${rows || ''}<button class="btn soft" id="add">+ Добавить заготовку</button>`) +
       card(`<h2>Чек-лист закрытия</h2><p class="sub">Пункты, которые отмечают на закрытии смены</p><div id="cl">` +
         cl.map((t, k) => `<div class="cl-row edit" style="padding:8px;margin-bottom:8px"><input data-cl value="${esc(t)}" placeholder="Например: почистить кофемашину"><button class="x" data-cldel="${k}">×</button></div>`).join('') +
@@ -1077,6 +1193,16 @@ const binds = {
     bindShift();
     bindHomeExtra();
     document.querySelectorAll('[data-tk]').forEach(b => b.onclick = e => { e.stopPropagation(); openTkForPrep(b.dataset.tk, toNum(b.dataset.amt)); });
+    // «❄️ Разморозил» — вместо варки достали из морозилки (сразу отмечается как сделанное)
+    document.querySelectorAll('[data-thaw]').forEach(b => b.onclick = async e => {
+      e.stopPropagation();
+      const it = me.today.items.find(x => x.pid === b.dataset.thaw); if (!it) return;
+      const q = await askQty('❄️ Разморозил: ' + it.name, 'В морозилке ' + fmt(it.frozen) + ' ' + esc(it.unit) + '. Срок хранения пойдёт с сегодняшнего дня', toNum(b.dataset.amt), it.unit, 'Отметить разморозку');
+      if (q == null) return;
+      try { await call('thaw', { pid: it.pid, q, today: true }); sel.delete(it.pid); fridgeData = null; haptic('success'); toast('Отмечено ❄️'); me = await call('me'); render(); }
+      catch (er) { toast(er.message); }
+    });
+    document.querySelectorAll('[data-fz]').forEach(inp => inp.oninput = () => { fzv[inp.dataset.fz] = inp.value; });
     const xb = document.getElementById('extraBox');
     if (xb) xb.addEventListener('toggle', () => { extraOpen = xb.open; });
     const btn = document.getElementById('made'); if (!btn) return;
@@ -1104,16 +1230,55 @@ const binds = {
         yields[pid] = v;
       });
       if (bad.length) { bad.forEach(i => i && i.parentNode.classList.add('bad')); if (bad[0]) bad[0].focus(); haptic('error'); toast('Впиши итоговый выход'); return; }
+      // сколько из сваренного убрали в морозилку (только у заготовок, которые замораживают)
+      const freezes = {};
+      for (const pid of sel) {
+        const inp = document.querySelector(`[data-fz="${CSS.escape(pid)}"]`), v = inp ? toNum(inp.value) : '';
+        if (v === '' || v === 0) continue;
+        if (isNaN(v) || v < 0 || v > yields[pid]) { inp.parentNode.classList.add('bad'); inp.focus(); haptic('error'); toast('В морозилку — не больше, чем сварено'); return; }
+        freezes[pid] = v;
+      }
       btn.disabled = true; btn.textContent = 'Отмечаю…';
-      try { await call('made', { pids: [...sel], yields: yields }); [...sel].forEach(pid => delete yv[pid]); sel.clear(); haptic('success'); toast('Молодец! 💪'); me = await call('me'); render(); }
+      try { await call('made', { pids: [...sel], yields: yields, freezes: freezes }); [...sel].forEach(pid => { delete yv[pid]; delete fzv[pid]; }); sel.clear(); fridgeData = null; haptic('success'); toast('Молодец! 💪'); me = await call('me'); render(); }
       catch (e) { toast(e.message); sync(); }
     };
+  },
+  fridge() {
+    const act = async (payload, okMsg) => {
+      try { await call(payload.action, payload.data); fridgeData = null; haptic('success'); toast(okMsg); me = await call('me'); render(); }
+      catch (e) { toast(e.message); }
+    };
+    const find = id => fridgeData.batches.find(x => x.id === id);
+    document.querySelectorAll('[data-bused]').forEach(b => b.onclick = async () => {
+      const x = find(b.dataset.bused); if (!x || !(await confirmBox(`${x.name} закончилась? Партия уберётся из списка.`))) return;
+      act({ action: 'batchDone', data: { id: x.id } }, 'Убрано ✅');
+    });
+    document.querySelectorAll('[data-bwaste]').forEach(b => b.onclick = async () => {
+      const x = find(b.dataset.bwaste); if (!x || !(await confirmBox(`Списать ${x.name} (${fmt(x.q)} ${x.unit})? Попадёт в отчёт о списаниях.`))) return;
+      act({ action: 'batchDone', data: { id: x.id, waste: true } }, 'Списано 🗑');
+    });
+    document.querySelectorAll('[data-bthaw]').forEach(b => b.onclick = async () => {
+      const pid = b.dataset.bthaw, all = fridgeData.batches.filter(x => x.pid === pid && x.state === 'f'), tot = all.reduce((a, x) => a + x.q, 0);
+      const q = await askQty('❄️ Разморозить: ' + all[0].name, 'В морозилке ' + fmt(tot) + ' ' + esc(all[0].unit) + '. Сначала берём самые старые партии', '', all[0].unit, 'Разморозить');
+      if (q != null) act({ action: 'thaw', data: { pid, q } }, 'Разморожено ❄️');
+    });
+    document.querySelectorAll('[data-bfreeze]').forEach(b => b.onclick = async () => {
+      const p = fridgeData.frz.find(x => x.id === b.dataset.bfreeze); if (!p) return;
+      const q = await askQty('❄️ В морозилку: ' + p.name, 'Сколько положили в морозилку', '', p.unit, 'Положить');
+      if (q != null) act({ action: 'freeze', data: { pid: p.id, q } }, 'Убрано в морозилку ❄️');
+    });
+  },
+  profile() {
+    const s = document.getElementById('cardWho');
+    if (s) s.onchange = () => { cardName = s.value === me.name ? null : s.value; cardData = null; render(); };
   },
   preps() {
     const collect = () => document.querySelectorAll('.edit[data-i]').forEach(row => {
       const p = cfg.preps[row.dataset.i];
-      row.querySelectorAll('input,select').forEach(inp => p[inp.dataset.f] = inp.value);
+      row.querySelectorAll('input,select').forEach(inp => p[inp.dataset.f] = inp.type === 'checkbox' ? inp.checked : inp.value);
     });
+    // «Замораживаем» — сразу показать/спрятать поле «В морозилке, дней»
+    document.querySelectorAll('.edit input[data-f="frz"]').forEach(cb => cb.onchange = () => { collect(); render(); });
     document.getElementById('add').onclick = () => {
       collect(); cfg.preps.push({ name: '', unit: '', min: '', norm: '', tk: '', yield: '' }); render();
       setTimeout(() => { const l = document.querySelectorAll('.edit input[data-f="name"]'); if (l.length) { l[l.length - 1].focus(); l[l.length - 1].scrollIntoView({ block: 'center' }); } }, 50);
@@ -1222,6 +1387,24 @@ const binds = {
   events() {
     restoreForm('e');
     bindAudience(evForm, 'e');
+    // брони
+    const bkBox = document.getElementById('bkBox');
+    if (bkBox) bkBox.addEventListener('toggle', () => { bkOpen = bkBox.open; });
+    document.querySelectorAll('[data-bkdel]').forEach(b => b.onclick = async () => {
+      if (!(await confirmBox('Удалить бронь? Напоминания не будет.'))) return;
+      try { await call('bookingDel', { id: b.dataset.bkdel }); bkData = null; render(); } catch (e) { toast(e.message); }
+    });
+    const bkAdd = document.getElementById('bkAdd');
+    if (bkAdd) bkAdd.onclick = async () => {
+      const v = id => document.getElementById(id).value.trim();
+      const guest = v('bGuest'), people = toNum(v('bPeople')), date = v('bDate'), time = v('bTime');
+      if (!guest) return toast('Напиши, на кого бронь');
+      if (!(people >= 1)) return toast('Сколько гостей?');
+      if (!date || !time) return toast('Укажи дату и время');
+      bkAdd.disabled = true; bkAdd.textContent = 'Сохраняю…';
+      try { await call('bookingAdd', { guest, people, date, time, phone: v('bPhone'), note: v('bNote') }); haptic('success'); toast('Бронь добавлена 📌'); bkData = null; bkOpen = false; render(); }
+      catch (e) { toast(e.message); bkAdd.disabled = false; bkAdd.textContent = 'Добавить бронь'; }
+    };
     document.querySelectorAll('[data-edel]').forEach(b => b.onclick = async () => {
       if (!(await confirmBox('Отменить событие? Всем приглашённым придёт уведомление.'))) return;
       try { await call('eventDel', { id: b.dataset.edel, notify: true }); evData = null; render(); } catch (e) { toast(e.message); }
@@ -1303,6 +1486,7 @@ function initKeyboard() {
 // ---- обновление свайпом вниз ----
 async function refreshAll() {
   taskData = evData = homeData = hist = cfg = tkCards = null; cfgP = tkP = null;
+  fridgeData = bkData = cardData = null;
   Object.keys(shiftCache).forEach(k => delete shiftCache[k]); Object.keys(shiftLoading).forEach(k => delete shiftLoading[k]);
   me = await call('me'); render(); prefetch();
 }
