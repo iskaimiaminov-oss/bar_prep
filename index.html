@@ -685,7 +685,15 @@ function bindHomeExtra() {
     box.querySelectorAll('[data-take]').forEach(b => b.onclick = async () => {
       if (!(await confirmBox('Взять эту смену? Админ подтвердит замену.'))) return;
       b.disabled = true;
-      try { await call('swapTake', { id: b.dataset.take }); haptic('success'); toast('Отлично! Ждём подтверждения 🙌'); fill(await getHome(true)); } catch (e) { toast(e.message); b.disabled = false; }
+      try {
+        let r = await call('swapTake', { id: b.dataset.take });
+        // у тебя в этот день уже своя смена — переспросить
+        if (r.needConfirm) {
+          if (!(await confirmBox(`У тебя в этот день уже смена ${r.shift}. Выйдешь ещё и на ${r.take} — получится ${r.total}. Не устанешь? 💪`))) { b.disabled = false; return; }
+          r = await call('swapTake', { id: b.dataset.take, confirm: true });
+        }
+        haptic('success'); toast('Отлично! Ждём подтверждения 🙌'); fill(await getHome(true));
+      } catch (e) { toast(e.message); b.disabled = false; }
     });
     box.querySelectorAll('[data-swcancel]').forEach(b => b.onclick = async () => {
       if (!(await confirmBox('Отменить поиск замены?'))) return;
