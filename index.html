@@ -105,6 +105,15 @@
   .yld em{font-style:normal;font-size:13px;font-weight:600;color:var(--forest)}
   .yld .field{background:var(--focus);border-color:var(--forest)}
   .yld .field.bad{border-color:var(--danger)}
+  /* «Сварил что-то ещё» — сворачиваемый блок */
+  details.card>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px}
+  details.card>summary::-webkit-details-marker{display:none}
+  details.card>summary .pname h2{margin:0}
+  details.card>summary .pname .sub{margin:2px 0 0}
+  details.card>summary::after{content:"›";font-size:24px;line-height:1;color:var(--muted);transition:transform .2s}
+  details.card[open]>summary::after{transform:rotate(90deg)}
+  details.card[open]>summary{margin-bottom:4px}
+  .dock.hide{display:none}
   .shelf{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
   .shelf:last-child{border-bottom:0}
   .days{font-weight:600;padding:5px 11px;border-radius:999px;background:var(--olive-soft);white-space:nowrap;font-size:14px}
@@ -280,6 +289,7 @@ const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0
 let homeData = null, homeP = null, probPhotos = [];
 let orderDraft = {}, taskData = null, evData = null, taskForm = { mode: 'all', statuses: [], ids: [] }, evForm = { mode: 'all', statuses: [], ids: [] };
 let yv = {};   // итоговый выход, который вписали (pid → текст)
+let extraOpen = null;   // блок «Сварил что-то ещё» открыт/закрыт (null — по умолчанию)
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
 let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
@@ -813,8 +823,8 @@ const views = {
     const hasTk = pid => { const p = me.preps.find(x => x.id === pid); return p && p.tk; };
     let out = shiftCard() + '<div id="homeExtra"></div>';
     const ro = me.isViewer;
+    const madeRow = i => `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>сварил(а) ${esc(made[i.pid])}${ylds[i.pid] != null ? ' · выход ' + fmt(ylds[i.pid]) + ' ' + esc(i.unit) : ''}</span></div></div>`;
     if (t.items.length) {
-      const madeRow = i => `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>сварил(а) ${esc(made[i.pid])}${ylds[i.pid] != null ? ' · выход ' + fmt(ylds[i.pid]) + ' ' + esc(i.unit) : ''}</span></div></div>`;
       // у выбранной заготовки — поле «Итоговый выход» (сразу стоит план, поправить, если вышло иначе)
       const rows = ro ? t.items.map(i => made[i.pid] ? madeRow(i) : needRow(i)).join('') : t.items.map(i => made[i.pid]
         ? madeRow(i)
@@ -827,8 +837,24 @@ const views = {
     } else {
       out += empty(me.last ? '🌿' : '🌙', me.last ? 'Всего хватает' : 'Ещё нет подсчёта', me.last ? 'По подсчёту заготовки не нужны.' : 'Остатки внесут вечером на закрытии.');
     }
-    if (ro || !t.items.length || t.items.every(i => made[i.pid])) return out;
-    out += `<div class="dock"><button class="btn ok" id="made" ${sel.size ? '' : 'disabled'}>${sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'}</button></div>`;
+    if (ro) return out;
+    // «Сварил что-то ещё» — заготовки не из списка (по подсчёту не требовались, но их сварили)
+    const inList = {}; t.items.forEach(i => inList[i.pid] = 1);
+    const extras = me.preps.filter(p => !inList[p.id]).map(p => ({ pid: p.id, name: p.name, unit: p.unit || '' }));
+    const lastV = (me.last && me.last.values) || {};
+    if (extras.length) {
+      const open = extraOpen != null ? extraOpen : (!t.items.length || extras.some(x => sel.has(x.pid) || made[x.pid]));
+      const madeCnt = extras.filter(x => made[x.pid]).length;
+      const rowsX = extras.map(x => made[x.pid] ? madeRow(x)
+        : `<div class="check ${sel.has(x.pid) ? 'on' : ''}" data-pid="${esc(x.pid)}"><div class="box">✓</div><div class="pname"><b>${esc(x.name)}</b><span>${lastV[x.pid] != null ? 'по подсчёту осталось ' + fmt(lastV[x.pid]) + ' ' + esc(x.unit) : 'не было в списке'}</span>
+            <label class="yld"><em>Итоговый выход</em><span class="field"><input data-y="${esc(x.pid)}" inputmode="decimal" enterkeyhint="done" placeholder="0" value="${esc(yv[x.pid] != null ? yv[x.pid] : '')}"><small>${esc(x.unit)}</small></span></label></div></div>`).join('');
+      out += `<details class="card" id="extraBox" ${open ? 'open' : ''}><summary><div class="pname"><h2>${t.items.length ? 'Сварил что-то ещё?' : 'Сварил заготовку?'}</h2>
+        <p class="sub">${madeCnt ? 'Отмечено сверх списка: ' + madeCnt : 'Отметь, если сварил(а) то, чего не было в списке'}</p></div></summary>${rowsX}</details>`;
+    }
+    const pending = t.items.some(i => !made[i.pid]), canMore = extras.some(x => !made[x.pid]);
+    if (!pending && !canMore) return out;
+    // если список сварен, кнопка появляется только когда что-то выбрали в «Сварил что-то ещё»
+    out += `<div class="dock ${pending || sel.size ? '' : 'hide'}" id="madeDock"><button class="btn ok" id="made" ${sel.size ? '' : 'disabled'}>${sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'}</button></div>`;
     return out;
   },
 
@@ -1051,8 +1077,14 @@ const binds = {
     bindShift();
     bindHomeExtra();
     document.querySelectorAll('[data-tk]').forEach(b => b.onclick = e => { e.stopPropagation(); openTkForPrep(b.dataset.tk, toNum(b.dataset.amt)); });
+    const xb = document.getElementById('extraBox');
+    if (xb) xb.addEventListener('toggle', () => { extraOpen = xb.open; });
     const btn = document.getElementById('made'); if (!btn) return;
-    const sync = () => { btn.disabled = !sel.size; btn.textContent = sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'; };
+    const dock = document.getElementById('madeDock'), pending = me.today.items.some(i => !(me.today.made || {})[i.pid]);
+    const sync = () => {
+      btn.disabled = !sel.size; btn.textContent = sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)';
+      if (dock) dock.classList.toggle('hide', !pending && !sel.size);
+    };
     document.querySelectorAll('[data-pid]').forEach(el => el.onclick = e => {
       if (e.target.closest('.yld')) return;   // клик по полю выхода не снимает выбор
       const id = el.dataset.pid;
