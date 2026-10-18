@@ -100,6 +100,11 @@
   .check.made{cursor:default}
   .check.made .box{background:var(--olive);border-color:var(--olive);color:var(--forest)}
   .check.made b{text-decoration:line-through;opacity:.6}
+  .yld{display:none;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;cursor:default}
+  .check.on .yld{display:flex}
+  .yld em{font-style:normal;font-size:13px;font-weight:600;color:var(--forest)}
+  .yld .field{background:var(--focus);border-color:var(--forest)}
+  .yld .field.bad{border-color:var(--danger)}
   .shelf{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
   .shelf:last-child{border-bottom:0}
   .days{font-weight:600;padding:5px 11px;border-radius:999px;background:var(--olive-soft);white-space:nowrap;font-size:14px}
@@ -274,6 +279,7 @@ const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0
 
 let homeData = null, homeP = null, probPhotos = [];
 let orderDraft = {}, taskData = null, evData = null, taskForm = { mode: 'all', statuses: [], ids: [] }, evForm = { mode: 'all', statuses: [], ids: [] };
+let yv = {};   // итоговый выход, который вписали (pid → текст)
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
 let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
@@ -803,14 +809,17 @@ const views = {
   },
 
   async today() {
-    const t = me.today, made = t.made || {};
+    const t = me.today, made = t.made || {}, ylds = t.yields || {};
     const hasTk = pid => { const p = me.preps.find(x => x.id === pid); return p && p.tk; };
     let out = shiftCard() + '<div id="homeExtra"></div>';
     const ro = me.isViewer;
     if (t.items.length) {
-      const rows = ro ? t.items.map(i => made[i.pid] ? `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>сварил(а) ${esc(made[i.pid])}</span></div></div>` : needRow(i)).join('') : t.items.map(i => made[i.pid]
-        ? `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>сварил(а) ${esc(made[i.pid])}</span></div></div>`
-        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" ${ro ? 'style="cursor:default"' : `data-pid="${esc(i.pid)}"`}><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span></div><div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div>${hasTk(i.pid) ? `<button class="tkbtn" data-tk="${esc(i.pid)}" data-amt="${i.need}">ТК</button>` : ''}</div>`).join('');
+      const madeRow = i => `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>сварил(а) ${esc(made[i.pid])}${ylds[i.pid] != null ? ' · выход ' + fmt(ylds[i.pid]) + ' ' + esc(i.unit) : ''}</span></div></div>`;
+      // у выбранной заготовки — поле «Итоговый выход» (сразу стоит план, поправить, если вышло иначе)
+      const rows = ro ? t.items.map(i => made[i.pid] ? madeRow(i) : needRow(i)).join('') : t.items.map(i => made[i.pid]
+        ? madeRow(i)
+        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" ${ro ? 'style="cursor:default"' : `data-pid="${esc(i.pid)}"`}><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span>
+            <label class="yld"><em>Итоговый выход</em><span class="field"><input data-y="${esc(i.pid)}" inputmode="decimal" enterkeyhint="done" value="${esc(yv[i.pid] != null ? yv[i.pid] : fmt(i.need))}"><small>${esc(i.unit)}</small></span></label></div><div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div>${hasTk(i.pid) ? `<button class="tkbtn" data-tk="${esc(i.pid)}" data-amt="${i.need}">ТК</button>` : ''}</div>`).join('');
       const allDone = t.items.every(i => made[i.pid]);
       out += card(`<h2>Сварить сегодня</h2><p class="sub">${allDone ? 'Всё готово — спасибо! 🎉' : ro ? 'Что нужно сварить по последнему подсчёту' : 'Отметь, что сварил(а)'}</p>${rows}`);
     } else if (t.done && t.done.none) {
@@ -1044,16 +1053,27 @@ const binds = {
     document.querySelectorAll('[data-tk]').forEach(b => b.onclick = e => { e.stopPropagation(); openTkForPrep(b.dataset.tk, toNum(b.dataset.amt)); });
     const btn = document.getElementById('made'); if (!btn) return;
     const sync = () => { btn.disabled = !sel.size; btn.textContent = sel.size ? '✅ Отметить сваренное (' + sel.size + ')' : 'Выбери, что сварил(а)'; };
-    document.querySelectorAll('[data-pid]').forEach(el => el.onclick = () => {
+    document.querySelectorAll('[data-pid]').forEach(el => el.onclick = e => {
+      if (e.target.closest('.yld')) return;   // клик по полю выхода не снимает выбор
       const id = el.dataset.pid;
       if (sel.has(id)) sel.delete(id); else sel.add(id);
       el.classList.toggle('on', sel.has(id)); sync();
+      if (sel.has(id)) { const inp = el.querySelector('[data-y]'); if (inp) setTimeout(() => { inp.focus(); inp.select(); }, 50); }
       try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
     });
+    document.querySelectorAll('[data-y]').forEach(inp => inp.oninput = () => { yv[inp.dataset.y] = inp.value; inp.parentNode.classList.remove('bad'); });
     btn.onclick = async () => {
       if (!sel.size) return;
+      // итоговый выход обязателен по каждой отмеченной заготовке
+      const yields = {}, bad = [];
+      [...sel].forEach(pid => {
+        const inp = document.querySelector(`[data-y="${CSS.escape(pid)}"]`), v = inp ? toNum(inp.value) : '';
+        if (v === '' || !(v > 0)) { bad.push(inp); return; }
+        yields[pid] = v;
+      });
+      if (bad.length) { bad.forEach(i => i && i.parentNode.classList.add('bad')); if (bad[0]) bad[0].focus(); haptic('error'); toast('Впиши итоговый выход'); return; }
       btn.disabled = true; btn.textContent = 'Отмечаю…';
-      try { await call('made', { pids: [...sel] }); sel.clear(); haptic('success'); toast('Молодец! 💪'); me = await call('me'); render(); }
+      try { await call('made', { pids: [...sel], yields: yields }); [...sel].forEach(pid => delete yv[pid]); sel.clear(); haptic('success'); toast('Молодец! 💪'); me = await call('me'); render(); }
       catch (e) { toast(e.message); sync(); }
     };
   },
