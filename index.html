@@ -689,7 +689,7 @@ function bindHomeExtra() {
         let r = await call('swapTake', { id: b.dataset.take });
         // у тебя в этот день уже своя смена — переспросить
         if (r.needConfirm) {
-          if (!(await confirmBox(`У тебя в этот день уже смена ${r.shift}. Выйдешь ещё и на ${r.take} — получится ${r.total}. Не устанешь? 💪`))) { b.disabled = false; return; }
+          if (!(await confirmBox(r.ask))) { b.disabled = false; return; }
           r = await call('swapTake', { id: b.dataset.take, confirm: true });
         }
         haptic('success'); toast('Отлично! Ждём подтверждения 🙌'); fill(await getHome(true));
