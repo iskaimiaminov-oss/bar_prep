@@ -647,16 +647,16 @@ function homeExtraHtml(d) {
       const right = w.none ? '<span class="sub" style="margin:0">график в процессе</span>' : w.off ? '<span class="mini">выходной</span>'
         : `<span class="time">${hmS(w.from)} – ${hmS(w.to)}</span>`;
       const sw = mySwap(w.date);
-      const act = !w.none && !w.off && w.date > today ? (sw ? `<span class="mini" style="background:var(--warm-soft);color:var(--warm)">${sw.status === 'taken' ? 'замена: ' + esc(sw.takerName) : 'ищем замену'}</span>`
+      const act = !w.none && !w.off && w.date > today ? (sw ? `<span class="mini" style="background:var(--warm-soft);color:var(--warm)">${sw.status === 'taken' ? (sw.mode === 'swap' ? 'обмен: ' : 'замена: ') + esc(sw.takerName) : sw.mode === 'swap' ? 'ищем обмен' : 'ищем замену'}</span>`
         : `<button class="tkbtn" data-swap="${w.date}" style="margin-left:6px">Замена</button>`) : '';
       return `<div class="shift ${w.off || w.none ? 'past' : ''}"><div class="pname"><b style="text-transform:capitalize">${lbl}</b>${w.role ? `<span>${esc(w.role)}</span>` : ''}</div>${right}${act}</div>`;
     }).join(''));
   }
   // кто ищет замену
   const others = (d.swaps || []).filter(w => !w.mine || me.isAdmin);
-  if (others.length) out += card(`<h2>🔄 Ищут замену</h2>` + others.map(w => `<div class="shift"><div class="pname"><b>${esc(w.byName)}</b>
-      <span>${new Date(w.date + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })} · ${hmS(w.from)}–${hmS(w.to)}${w.status === 'taken' ? ' · берёт ' + esc(w.takerName) : ''}</span></div>
-      ${w.status === 'open' && !w.mine && !me.isViewer ? `<button class="tkbtn" data-take="${esc(w.id)}">🙋 Возьму</button>` : ''}
+  if (others.length) out += card(`<h2>🔄 Ищут замену</h2>` + others.map(w => `<div class="shift"><div class="pname"><b>${esc(w.byName)}</b> <span class="mini">${w.mode === 'swap' ? '🔄 обмен' : '🙋 отдаёт'}</span>
+      <span>${new Date(w.date + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })} · ${hmS(w.from)}–${hmS(w.to)}${w.status === 'taken' ? ' · ' + (w.mode === 'swap' ? 'меняется ' : 'берёт ') + esc(w.takerName) : ''}</span></div>
+      ${w.status === 'open' && !w.mine && !me.isViewer ? `<button class="tkbtn" data-take="${esc(w.id)}" data-mode="${w.mode === 'swap' ? 'swap' : 'give'}">${w.mode === 'swap' ? '🔄 Поменяюсь' : '🙋 Возьму'}</button>` : ''}
       ${w.mine || me.isAdmin ? `<button class="x" data-swcancel="${esc(w.id)}">×</button>` : ''}</div>`).join(''));
   // дни рождения на неделю вперёд
   const bd = d.bdays || {}, soon = [];
@@ -671,6 +671,22 @@ function homeExtraHtml(d) {
     (me.orderer && !me.isAdmin ? '' : `<button class="btn soft" id="probBtn">⚠️ Сообщить о проблеме</button>`));
   return out;
 }
+// Окошко выбора: отдать смену или поменяться сменами. Возвращает 'give' | 'swap' | null
+function chooseSwapMode(dayLabel) {
+  return new Promise(res => {
+    closeSheet();
+    const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+    wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>Замена на ${esc(dayLabel)}</h2>
+      <p class="sub" style="margin-top:4px">В группу уйдёт заявка, админ подтвердит, график поправится сам</p>
+      <button class="btn" data-m="give">🙋 Отдать смену</button><p class="sub" style="margin:6px 2px 0">Кто возьмёт — выйдет вместо тебя, у тебя выходной</p>
+      <button class="btn ok" data-m="swap">🔄 Поменяться сменами</button><p class="sub" style="margin:6px 2px 0">Тот, кто работает в этот день, выйдет на твоё время, а ты — на его</p>
+      <button class="btn soft" data-m="">Отмена</button></div>`;
+    document.body.appendChild(wrap);
+    const done = v => { closeSheet(); res(v || null); };
+    wrap.querySelectorAll('[data-m]').forEach(b => b.onclick = () => done(b.dataset.m));
+    wrap.onclick = e => { if (e.target === wrap) done(null); };
+  });
+}
 function bindHomeExtra() {
   const box = document.getElementById('homeExtra'); if (!box) return;
   const fill = d => {
@@ -678,12 +694,15 @@ function bindHomeExtra() {
     box.innerHTML = homeExtraHtml(d);
     box.querySelectorAll('[data-swap]').forEach(b => b.onclick = async () => {
       const date = b.dataset.swap;
-      if (!(await confirmBox('Найти замену на ' + new Date(date + 'T12:00:00Z').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' }) + '? В группу уйдёт сообщение, кто-нибудь сможет взять твою смену.'))) return;
+      const mode = await chooseSwapMode(new Date(date + 'T12:00:00Z').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' }));
+      if (!mode) return;
       b.disabled = true;
-      try { await call('swapAsk', { date }); toast('Запрос отправлен в группу 🔄'); fill(await getHome(true)); } catch (e) { toast(e.message); b.disabled = false; }
+      try { await call('swapAsk', { date, mode }); toast('Запрос отправлен в группу 🔄'); fill(await getHome(true)); } catch (e) { toast(e.message); b.disabled = false; }
     });
     box.querySelectorAll('[data-take]').forEach(b => b.onclick = async () => {
-      if (!(await confirmBox('Взять эту смену? Админ подтвердит замену.'))) return;
+      if (!(await confirmBox(b.dataset.mode === 'swap'
+        ? 'Поменяться сменой? Если у тебя в этот день смена — поменяетесь временем, если выходной — заберёшь смену. Админ подтвердит.'
+        : 'Взять эту смену? Админ подтвердит замену.'))) return;
       b.disabled = true;
       try {
         let r = await call('swapTake', { id: b.dataset.take });
