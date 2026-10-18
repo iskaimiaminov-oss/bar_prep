@@ -251,8 +251,6 @@
   #pull.ready::after{color:var(--forest)}
   #pull.spin{animation:pspin .8s linear infinite}
   @keyframes pspin{from{transform:translate(-50%,40px) rotate(0)}to{transform:translate(-50%,40px) rotate(360deg)}}
-  #kbHide{position:fixed;top:10px;right:12px;z-index:40;display:none;border:0;border-radius:999px;padding:9px 16px;background:var(--forest);color:var(--cream);font:inherit;font-weight:600;font-size:15px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
-  #kbHide.show{display:block}
   #toast{position:fixed;left:16px;right:16px;bottom:90px;background:var(--forest);color:var(--cream);padding:13px 16px;border-radius:14px;opacity:0;transform:translateY(16px);transition:.25s;pointer-events:none;z-index:9;text-align:center;font-weight:500}
   #toast.show{opacity:1;transform:none}
 </style>
@@ -700,7 +698,7 @@ function shiftCard() {
   }
   return `<div class="card" id="shiftCard"><div class="dayhead">
       <button class="navb" id="dPrev">‹</button><div class="grow"><h2>На смене</h2><p class="sub" id="dTitle" style="margin:2px 0 0"></p></div><button class="navb" id="dNext">›</button></div>
-    <div class="strip" id="strip">${chips}</div><div id="dayBody"></div></div>`;
+    <div class="strip" id="strip">${chips}</div><div id="dayBody"></div>${me.isAdmin ? '<button class="btn soft" id="schRefresh" style="padding:10px;margin-top:10px;font-size:14px">🔄 Обновить график из таблицы</button>' : ''}</div>`;
 }
 function dayRows(date, list) {
   const today = me.today.date, isToday = date === today;
@@ -740,6 +738,16 @@ function goDay(n) {
 }
 function bindShift() {
   if (!document.getElementById('shiftCard')) return;
+  const sr = document.getElementById('schRefresh');
+  if (sr) sr.onclick = async () => {
+    sr.disabled = true; sr.textContent = 'Читаю таблицу…';
+    try {
+      await call('refreshSchedule');
+      Object.keys(shiftCache).forEach(k => delete shiftCache[k]); Object.keys(shiftLoading).forEach(k => delete shiftLoading[k]);
+      homeData = null; homeP = null; cfg = null; cfgP = null; names = null;
+      me = await call('me'); toast('График обновлён ✅'); render();
+    } catch (e) { toast(e.message); sr.disabled = false; sr.textContent = '🔄 Обновить график из таблицы'; }
+  };
   document.getElementById('dPrev').onclick = () => goDay(-1);
   document.getElementById('dNext').onclick = () => goDay(1);
   document.querySelectorAll('.dchip').forEach(c => c.onclick = () => { const n = diffD(c.dataset.day, curDay); if (n) goDay(n); });
@@ -881,6 +889,7 @@ const views = {
       <div class="pname"><b>${esc(c.title)}</b><span>${c.yields && c.yields.find(y => y && y.n) ? 'выход ' + q(c.yields.find(y => y && y.n).n) + ' ' + esc(c.yields.find(y => y && y.n).u) : 'выход не указан'}${c.shelf ? ' · хранится ' + esc(c.shelf) : ''}</span></div>
       ${me.isAdmin ? `<button class="tkbtn" data-hide="${esc(c.id)}" data-val="${isHidden ? 0 : 1}">${isHidden ? 'Вернуть' : 'Убрать'}</button>` : `<span style="color:var(--muted);font-size:20px">›</span>`}</div>`;
     let out = card(`<h2>Техкарты заготовок</h2><p class="sub">Нажми, чтобы открыть рецепт и пересчитать количество${me.isAdmin ? '. «Убрать» — скрыть у команды, таблица не меняется' : ''}</p>` +
+      (me.isAdmin ? `<button class="btn soft" id="tkRefresh" style="margin:0 0 6px;padding:11px">🔄 Обновить из таблицы</button>` : '') +
       (cards.length ? cards.map(c => row(c, false)).join('') : '<p class="sub">Все техкарты скрыты</p>'));
     if (me.isAdmin && hidden.length) out += card(`<h2>Убранные</h2><p class="sub">Команда их не видит</p>` + hidden.map(c => row(c, true)).join(''));
     return out;
@@ -943,7 +952,7 @@ const views = {
         <h3>Статусы «не в баре»</h3><textarea id="exclude" rows="3">${esc(cfg.exclude.join(', '))}</textarea>
         <button class="btn" id="saveStaff">Сохранить</button>`) +
       statusCard + usersCard +
-      card(`<h2>Проверка графика</h2><p class="sub">Кого бот отметит сегодня.</p>${whoHtml}<button class="btn soft" id="who">Проверить сегодня</button>`);
+      card(`<h2>Проверка графика</h2><p class="sub">Кого бот отметит сегодня. Поменял график — нажми «Обновить график» на вкладке «Сегодня»</p>${whoHtml}<button class="btn soft" id="who">Проверить сегодня</button>`);
   },
 
   async history() {
@@ -1193,6 +1202,12 @@ const binds = {
     document.querySelectorAll('[data-h]').forEach(el => el.onclick = () => openClosing(hist[+el.dataset.h]));
   },
   tk() {
+    const rf = document.getElementById('tkRefresh');
+    if (rf) rf.onclick = async () => {
+      rf.disabled = true; rf.textContent = 'Читаю таблицу…';
+      try { tkCards = (await call('tk', { refresh: true })).cards; tkP = null; toast('Техкарты обновлены ✅'); render(); }
+      catch (e) { toast(e.message); rf.disabled = false; rf.textContent = '🔄 Обновить из таблицы'; }
+    };
     document.querySelectorAll('[data-hide]').forEach(b => b.onclick = async e => {
       e.stopPropagation();
       const hide = b.dataset.val === '1', c = tkCards.find(x => x.id === b.dataset.hide);
@@ -1211,14 +1226,8 @@ const binds = {
 
 // ---- клавиатура: «Готово», тап мимо поля, Enter → следующее поле ----
 function initKeyboard() {
-  const kb = document.createElement('button'); kb.id = 'kbHide'; kb.type = 'button'; kb.textContent = 'Готово ⌄';
-  document.body.appendChild(kb);
   const isField = el => !!el && ((el.tagName === 'INPUT' && !/^(checkbox|radio|file|button|submit|date|time)$/.test(el.type)) || el.tagName === 'TEXTAREA');
-  const hide = () => { const a = document.activeElement; if (isField(a)) a.blur(); kb.classList.remove('show'); };
-  document.addEventListener('focusin', e => { if (isField(e.target)) kb.classList.add('show'); });
-  document.addEventListener('focusout', () => setTimeout(() => { if (!isField(document.activeElement)) kb.classList.remove('show'); }, 80));
-  kb.addEventListener('pointerdown', e => { e.preventDefault(); hide(); });
-  kb.addEventListener('click', hide);
+  const hide = () => { const a = document.activeElement; if (isField(a)) a.blur(); };
   // тап по пустому месту закрывает клавиатуру
   let sx = 0, sy = 0;
   document.addEventListener('touchstart', e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
@@ -1226,7 +1235,7 @@ function initKeyboard() {
     if (!isField(document.activeElement)) return;
     const t = e.target, c = e.changedTouches[0];
     if (Math.abs(c.clientX - sx) > 10 || Math.abs(c.clientY - sy) > 10) return;   // это был скролл
-    if (isField(t) || (t.closest && t.closest('label,select,button,.field,#kbHide'))) return;
+    if (isField(t) || (t.closest && t.closest('label,select,button,.field'))) return;
     hide();
   }, { passive: true });
   // Enter: в подсчёте — к следующему полю, иначе закрыть клавиатуру
