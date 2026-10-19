@@ -937,6 +937,7 @@ const HELP = [
     'В 14:20 бот присылает в группу, что нужно сварить. Список считается по остаткам, которые внесли на закрытии.',
     'Сварил — открой «Сегодня», нажми на заготовку, впиши итоговый выход (сколько получилось на самом деле) и нажми «Отметить сваренное». Итоговый выход обязателен.',
     'Ошибся с выходом? У отмеченной заготовки есть кнопка «✏️ Выход»: впиши правильное число, и отчёт, холодильник и сообщение в группе исправятся сами. Исправить можно только в тот же день, администратор увидит, кто и что поправил.',
+    'Отметил не ту заготовку? Нажми 🗑 у неё: отметка удалится, партия уберётся из холодильника, из отчёта и из сообщения в группе. Потом отметь правильную заготовку с правильным выходом. Удалить можно только в тот же день, администратор увидит, кто удалил.',
     'Кнопка «ТК» рядом с заготовкой — техкарта с пересчётом на нужный объём.',
     'Сварил то, чего не было в списке? Внизу есть блок «Сварил что-то ещё?» — отметь там.',
     'Тыквенное пюре: если часть сразу убираешь в морозилку, впиши это в поле «Из них в морозилку». Если в морозилке уже есть пюре — не вари, а нажми «Не варил, а разморозил».',
@@ -1176,7 +1177,7 @@ const views = {
     const thawed = t.thawed || {};
     const yEdit = t.yEdit || {};
     // сваренное: можно исправить выход, если ошиблись при отметке (кроме разморозки)
-    const madeRow = i => `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>${thawed[i.pid] ? '❄️ разморозил(а)' : 'сварил(а)'} ${esc(made[i.pid])}${ylds[i.pid] != null ? ' · ' + (thawed[i.pid] ? '' : 'выход ') + fmt(ylds[i.pid]) + ' ' + esc(i.unit) : ''}${yEdit[i.pid] ? ' · исправил(а) ' + esc(yEdit[i.pid]) : ''}</span></div>${!ro && !thawed[i.pid] && ylds[i.pid] != null ? `<button class="tkbtn" data-yedit="${esc(i.pid)}">✏️ Выход</button>` : ''}</div>`;
+    const madeRow = i => `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>${thawed[i.pid] ? '❄️ разморозил(а)' : 'сварил(а)'} ${esc(made[i.pid])}${ylds[i.pid] != null ? ' · ' + (thawed[i.pid] ? '' : 'выход ') + fmt(ylds[i.pid]) + ' ' + esc(i.unit) : ''}${yEdit[i.pid] ? ' · исправил(а) ' + esc(yEdit[i.pid]) : ''}</span></div>${!ro && !thawed[i.pid] && ylds[i.pid] != null ? `<button class="tkbtn" data-yedit="${esc(i.pid)}">✏️ Выход</button>` : ''}${!ro ? `<button class="tkbtn" data-undo="${esc(i.pid)}" style="margin-left:6px" aria-label="Удалить отметку">🗑</button>` : ''}</div>`;
     // заготовки, которые замораживают: при отметке — сколько из сваренного ушло в морозилку
     const isFrz = pid => { const p = me.preps.find(x => x.id === pid); return p && p.frz; };
     const fzField = (pid, unit) => isFrz(pid) ? `<label class="yld"><em>❄️ Из них в морозилку</em><span class="field"><input data-fz="${esc(pid)}" inputmode="decimal" placeholder="0" value="${esc(fzv[pid] != null ? fzv[pid] : '')}"><small>${esc(unit)}</small></span></label>` : '';
@@ -1531,6 +1532,15 @@ const binds = {
       if (q == null || q === cur) return;
       try { await call('editYield', { pid, q }); fridgeData = null; haptic('success'); toast('Выход исправлен ✅'); me = await call('me'); render(); }
       catch (er) { toast(er.message); }
+    });
+    // 🗑 — удалить отметку, если отметили не ту заготовку (холодильник, отчёт и группа откатятся)
+    document.querySelectorAll('[data-undo]').forEach(b => b.onclick = async e => {
+      e.stopPropagation();
+      const pid = b.dataset.undo, p = me.preps.find(x => x.id === pid) || {}, th = (me.today.thawed || {})[pid];
+      if (!(await confirmBox('Удалить отметку «' + (p.name || '') + '»? ' + (th ? 'Разморозка вернётся в морозилку.' : 'Партия уберётся из холодильника и из отчёта.') + ' Потом можно отметить правильную заготовку.'))) return;
+      b.disabled = true;
+      try { await call('undoMade', { pid }); fridgeData = null; haptic('success'); toast('Отметка удалена'); me = await call('me'); render(); }
+      catch (er) { toast(er.message); b.disabled = false; }
     });
     const xb = document.getElementById('extraBox');
     if (xb) xb.addEventListener('toggle', () => { extraOpen = xb.open; });
