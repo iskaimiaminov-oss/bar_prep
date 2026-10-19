@@ -800,13 +800,21 @@ function dayRows(date, list) {
   if (list === null || (!list.length && date >= today)) return `<div class="wip"><div class="big">✍️</div><b>График в процессе</b>Расписание на этот день ещё не готово</div>`;
   if (!list.length) return `<div class="wip"><div class="big">🌙</div><b>Никого в графике</b></div>`;
   const now = me.now || 0, t = m => Math.floor(m / 60) % 24 + ':' + String(m % 60).padStart(2, '0');
-  return `<p class="sub" style="margin:4px 0 0">${list.length} ${list.length === 1 ? 'человек' : list.length < 5 ? 'человека' : 'человек'} на смене</p>` + list.map(x => {
+  // Яндекс / Узум — офисы на нашей точке, показываем отдельно под командой Рассвета
+  const pointRe = /яндекс|узум/i, bar = list.filter(x => !pointRe.test(x.name)), pts = list.filter(x => pointRe.test(x.name));
+  const row = x => {
     const cls = isToday ? (now >= x.from && now < x.to ? 'now' : now >= x.to ? 'past' : '') : '';
     const sub = isToday ? (cls === 'now' ? 'сейчас на смене' : cls === 'past' ? 'смена закончилась' : 'придёт в ' + t(x.from)) : (x.from < 12 * 60 ? 'утро' : 'вечер');
-    return `<div class="shift ${cls}"><div class="ava">${esc(String(x.name)[0] || '?')}</div>
-      <div class="pname"><b>${esc(x.name)}${x.name === me.name ? ' <span class="mini">ты</span>' : ''}${homeData && (homeData.bdays || {})[x.name] === date.slice(5) ? ' 🎂' : ''}${stBadge(statusOf(x.name))}${x.role ? `<span class="mini">${esc(x.role)}</span>` : ''}${x.to >= 22 * 60 ? '<span class="mini close">закрывает</span>' : ''}</b>
+    const pt = (String(x.name).match(pointRe) || [''])[0], shown = pt ? String(x.name).replace(pointRe, '').replace(/\s+/g, ' ').trim() || x.name : x.name;
+    const ptTag = pt ? `<span class="mini">${esc(pt[0].toUpperCase() + pt.slice(1).toLowerCase())}</span>` : '';
+    const role = x.role && !(pt && pointRe.test(x.role)) ? `<span class="mini">${esc(x.role)}</span>` : '';
+    return `<div class="shift ${cls}"><div class="ava">${esc(String(shown)[0] || '?')}</div>
+      <div class="pname"><b>${esc(shown)}${x.name === me.name ? ' <span class="mini">ты</span>' : ''}${homeData && (homeData.bdays || {})[x.name] === date.slice(5) ? ' 🎂' : ''}${ptTag}${stBadge(statusOf(x.name))}${role}${!pt && x.to >= 22 * 60 ? '<span class="mini close">закрывает</span>' : ''}</b>
       <span>${sub}</span></div><span class="time">${t(x.from)} – ${t(x.to)}</span></div>`;
-  }).join('');
+  };
+  const n = bar.length;
+  return (n ? `<p class="sub" style="margin:4px 0 0">Рассвет · ${n} ${n === 1 ? 'человек' : n < 5 ? 'человека' : 'человек'} на смене</p>` + bar.map(row).join('') : '<p class="sub" style="margin:4px 0 0">Из команды Рассвета в графике никого</p>') +
+    (pts.length ? `<p class="sub" style="margin:14px 0 0">Офисы на нашей точке</p>` + pts.map(row).join('') : '');
 }
 function drawDay(dir) {
   const body = document.getElementById('dayBody'); if (!body) return;
@@ -892,7 +900,7 @@ const HELP = [
     'Справа сверху: кружок с твоей буквой — профиль и достижения, «?» — эта инструкция.',
     'Чтобы обновить данные, потяни экран вниз.']],
   ['☀️', 'Вкладка «Сегодня»', [
-    '«На смене» — кто работает в выбранный день. Дни листаются свайпом или нажатием на дату. Зелёная точка — человек сейчас на смене, пометка «закрывает» — закрывающий.',
+    '«На смене» — кто работает в выбранный день. Дни листаются свайпом или нажатием на дату. Зелёная точка — человек сейчас на смене, пометка «закрывает» — закрывающий. Сначала идёт команда Рассвета, ниже отдельно «Офисы на нашей точке» — сотрудники Узума и Яндекса.',
     '«Мои смены» — твои смены на неделю вперёд и кнопка «Замена».',
     '«Ищут замену» — заявки коллег, которые можно взять.',
     'Дни рождения команды на неделю вперёд.',
