@@ -199,6 +199,8 @@
   .st1{background:#E1EBC9;color:#4C5E1F}
   .st2{background:#F6E1BE;color:#8A5414}
   .st3{background:#0A3320;color:#F2F5CF}
+  .st4,.seg button.on.st4{background:#EADCF0;color:#5E3A72}
+  .st5,.seg button.on.st5{background:#F3D9D2;color:#86372A}
   .seg{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .seg button{border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:6px 11px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted)}
   .seg button.on{border-color:transparent}
@@ -618,8 +620,8 @@ function bindPhotos() {
   };
 }
 
-const ST_LIST = ['стажер', 'бариста', 'про бариста', 'старший бариста'];
-const ST_LABEL = { 'стажер': 'Стажёр', 'бариста': 'Бариста', 'про бариста': 'Про бариста', 'старший бариста': 'Старший бариста' };
+const ST_LIST = ['стажер', 'бариста', 'про бариста', 'старший бариста', 'управляющий', 'владелец'];
+const ST_LABEL = { 'стажер': 'Стажёр', 'бариста': 'Бариста', 'про бариста': 'Про бариста', 'старший бариста': 'Старший бариста', 'управляющий': 'Управляющий', 'владелец': 'Владелец' };
 const stBadge = st => st ? `<span class="stb st${ST_LIST.indexOf(st)}">${ST_LABEL[st] || esc(st)}</span>` : '';
 const statusOf = name => (me.statuses || {})[name] || '';
 // Выбор адресатов: всем / по статусу / админам / выбрать людей
@@ -690,7 +692,7 @@ function homeExtraHtml(d) {
   out += card(`<h2>⚠️ Проблемы</h2><p class="sub">${pr.length ? 'Открытые — ждут решения' : 'Что-то сломалось или закончилось? Сообщи — админ сразу узнает'}</p>` +
     pr.map(p => `<div class="task"><div class="pname"><b>${esc(p.text)}</b><span>${esc(p.byName)} · ${fmtTs(p.at)}${p.photos ? ' · 📷 ' + p.photos : ''}</span></div>
       ${me.canCreate ? `<button class="tkbtn" data-pdone="${esc(p.id)}">✅ Решено</button>` : ''}</div>`).join('') +
-    (me.orderer && !me.isAdmin ? '' : `<button class="btn soft" id="probBtn">⚠️ Сообщить о проблеме</button>`));
+    (me.orderer && !me.isAdmin ? '' : `<button class="btn soft" id="probBtn">⚠️ Сообщить о проблеме</button><button class="btn soft" id="dishBtn" style="margin-top:8px">🍽 Заказать посуду</button>`));
   return out;
 }
 // Окошко выбора: отдать смену или поменяться сменами. Возвращает 'give' | 'swap' | null
@@ -745,9 +747,32 @@ function bindHomeExtra() {
       try { await call('probDone', { id: b.dataset.pdone }); haptic('success'); fill(await getHome(true)); } catch (e) { toast(e.message); }
     });
     const pb = document.getElementById('probBtn'); if (pb) pb.onclick = () => openProblem(() => getHome(true).then(fill));
+    const db = document.getElementById('dishBtn'); if (db) db.onclick = openDish;
   };
   if (homeData) fill(homeData); else box.innerHTML = card('<div class="wip">Загружаю…</div>');
   getHome(!!homeData).then(fill).catch(() => {});
+}
+// Заказ посуды: уходит задачей управляющим, бот напоминает раз в 3 дня, пока не закажут
+function openDish() {
+  closeSheet();
+  const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+  wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>🍽 Заказать посуду</h2>
+    <p class="sub" style="margin-top:4px">Чего не хватает или что разбилось. Управляющие получат задачу и закажут</p>
+    <div class="form"><label>Какая посуда</label><input id="dWhat" maxlength="200" placeholder="Например: бокалы для лимонада 400 мл">
+      <label>Сколько</label><input id="dQty" maxlength="40" placeholder="Например: 6 шт">
+      <label>Комментарий (необязательно)</label><textarea id="dNote" rows="2" maxlength="300" placeholder="Например: разбили 2, осталось 4"></textarea></div>
+    <button class="btn" id="dSend">Отправить заказ</button><button class="btn soft" id="closeSheet">Отмена</button></div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#closeSheet').onclick = closeSheet;
+  wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+  wrap.querySelector('#dSend').onclick = async ev => {
+    const what = wrap.querySelector('#dWhat').value.trim(), qty = wrap.querySelector('#dQty').value.trim(), note = wrap.querySelector('#dNote').value.trim();
+    if (!what) return toast('Напиши, какая посуда нужна');
+    if (!qty) return toast('Укажи, сколько нужно');
+    ev.target.disabled = true; ev.target.textContent = 'Отправляю…';
+    try { await call('dishOrder', { what, qty, note }); haptic('success'); toast('Заказ отправлен, спасибо! 🍽'); closeSheet(); }
+    catch (e) { toast(e.message); ev.target.disabled = false; ev.target.textContent = 'Отправить заказ'; }
+  };
 }
 function openProblem(done) {
   closeSheet(); probPhotos = [];
@@ -800,21 +825,22 @@ function dayRows(date, list) {
   if (list === null || (!list.length && date >= today)) return `<div class="wip"><div class="big">✍️</div><b>График в процессе</b>Расписание на этот день ещё не готово</div>`;
   if (!list.length) return `<div class="wip"><div class="big">🌙</div><b>Никого в графике</b></div>`;
   const now = me.now || 0, t = m => Math.floor(m / 60) % 24 + ':' + String(m % 60).padStart(2, '0');
-  // Яндекс / Узум — офисы на нашей точке, показываем отдельно под командой Рассвета
-  const pointRe = /яндекс|узум/i, bar = list.filter(x => !pointRe.test(x.name)), pts = list.filter(x => pointRe.test(x.name));
+  // сначала команда Рассвета, ниже отдельными блоками те, кто работает в другом месте (Узум, Яндекс, Amway, кейтеринг…)
+  const pointRe = /яндекс|узум/i;
+  const placeOf = x => x.place !== undefined ? x.place : ((String(x.name).match(pointRe) || [''])[0].replace(/^./, c => c.toUpperCase()));
+  const bar = list.filter(x => !placeOf(x)), places = [];
+  list.forEach(x => { const p = placeOf(x); if (p && places.indexOf(p) < 0) places.push(p); });
   const row = x => {
     const cls = isToday ? (now >= x.from && now < x.to ? 'now' : now >= x.to ? 'past' : '') : '';
     const sub = isToday ? (cls === 'now' ? 'сейчас на смене' : cls === 'past' ? 'смена закончилась' : 'придёт в ' + t(x.from)) : (x.from < 12 * 60 ? 'утро' : 'вечер');
-    const pt = (String(x.name).match(pointRe) || [''])[0], shown = pt ? String(x.name).replace(pointRe, '').replace(/\s+/g, ' ').trim() || x.name : x.name;
-    const ptTag = pt ? `<span class="mini">${esc(pt[0].toUpperCase() + pt.slice(1).toLowerCase())}</span>` : '';
-    const role = x.role && !(pt && pointRe.test(x.role)) ? `<span class="mini">${esc(x.role)}</span>` : '';
+    const away = !!placeOf(x), shown = String(x.name).replace(pointRe, '').replace(/\s+/g, ' ').trim() || x.name;
     return `<div class="shift ${cls}"><div class="ava">${esc(String(shown)[0] || '?')}</div>
-      <div class="pname"><b>${esc(shown)}${x.name === me.name ? ' <span class="mini">ты</span>' : ''}${homeData && (homeData.bdays || {})[x.name] === date.slice(5) ? ' 🎂' : ''}${ptTag}${stBadge(statusOf(x.name))}${role}${!pt && x.to >= 22 * 60 ? '<span class="mini close">закрывает</span>' : ''}</b>
+      <div class="pname"><b>${esc(shown)}${x.name === me.name ? ' <span class="mini">ты</span>' : ''}${homeData && (homeData.bdays || {})[x.name] === date.slice(5) ? ' 🎂' : ''}${stBadge(statusOf(x.name))}${x.role ? `<span class="mini">${esc(x.role)}</span>` : ''}${!away && x.to >= 22 * 60 ? '<span class="mini close">закрывает</span>' : ''}</b>
       <span>${sub}</span></div><span class="time">${t(x.from)} – ${t(x.to)}</span></div>`;
   };
   const n = bar.length;
-  return (n ? `<p class="sub" style="margin:4px 0 0">Рассвет · ${n} ${n === 1 ? 'человек' : n < 5 ? 'человека' : 'человек'} на смене</p>` + bar.map(row).join('') : '<p class="sub" style="margin:4px 0 0">Из команды Рассвета в графике никого</p>') +
-    (pts.length ? `<p class="sub" style="margin:14px 0 0">Офисы на нашей точке</p>` + pts.map(row).join('') : '');
+  return (n ? `<p class="sub" style="margin:4px 0 0">Рассвет · ${n} ${n % 10 === 1 && n % 100 !== 11 ? 'человек' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'человека' : 'человек'} на смене</p>` + bar.map(row).join('') : '<p class="sub" style="margin:4px 0 0">Из команды Рассвета в графике никого</p>') +
+    places.map(p => `<p class="sub" style="margin:14px 0 0">📍 <b>${esc(p)}</b>${/^(Яндекс|Узум)$/.test(p) ? ' · офис на нашей точке' : ''}</p>` + list.filter(x => placeOf(x) === p).map(row).join('')).join('');
 }
 function drawDay(dir) {
   const body = document.getElementById('dayBody'); if (!body) return;
@@ -900,11 +926,12 @@ const HELP = [
     'Справа сверху: кружок с твоей буквой — профиль и достижения, «?» — эта инструкция.',
     'Чтобы обновить данные, потяни экран вниз.']],
   ['☀️', 'Вкладка «Сегодня»', [
-    '«На смене» — кто работает в выбранный день. Дни листаются свайпом или нажатием на дату. Зелёная точка — человек сейчас на смене, пометка «закрывает» — закрывающий. Сначала идёт команда Рассвета, ниже отдельно «Офисы на нашей точке» — сотрудники Узума и Яндекса.',
+    '«На смене» — кто работает в выбранный день. Дни листаются свайпом или нажатием на дату. Зелёная точка — человек сейчас на смене, пометка «закрывает» — закрывающий. Сначала идёт команда Рассвета, ниже отдельными блоками те, кто работает в другом месте: офисы Узума и Яндекса на нашей точке, Amway, кейтеринг и т.п. (по подписи под временем в графике). Касса, тачка, холодка, раннер — роль, она видна рядом с именем. Управляющих и владельцев в списке нет.',
     '«Мои смены» — твои смены на неделю вперёд и кнопка «Замена».',
     '«Ищут замену» — заявки коллег, которые можно взять.',
     'Дни рождения команды на неделю вперёд.',
-    '«Проблемы» — что-то сломалось или закончилось? Нажми «Сообщить о проблеме», опиши и приложи до 3 фото. Администратор получит сразу.']],
+    '«Проблемы» — что-то сломалось или закончилось? Нажми «Сообщить о проблеме», опиши и приложи до 3 фото. Администратор получит сразу.',
+    '«Заказать посуду» — не хватает бокалов, чашек, ложек? Напиши, какая посуда и сколько. Управляющие получат задачу, бот напоминает им раз в 3 дня, пока не закажут. Когда закажут — тебе придёт сообщение.']],
   ['🧪', 'Заготовки: как отмечать сваренное', [
     'В 14:20 бот присылает в группу, что нужно сварить. Список считается по остаткам, которые внесли на закрытии.',
     'Сварил — открой «Сегодня», нажми на заготовку, впиши итоговый выход (сколько получилось на самом деле) и нажми «Отметить сваренное». Итоговый выход обязателен.',
