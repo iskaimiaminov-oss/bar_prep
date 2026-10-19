@@ -403,8 +403,8 @@ function header() {
 function tabsList() {
   if (me.orderer && !me.isAdmin) return [['order', 'Заказ']];
   const tasksLbl = 'Задачи' + (me.openTasks ? `<span class="tabcount">${me.openTasks}</span>` : '');
-  if (me.isViewer) return [['today', 'Сегодня'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['history', 'История'], ['tk', 'Техкарты']];
-  const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['tk', 'Техкарты']];
+  if (me.isViewer) return [['today', 'Сегодня'], ['cash', 'Наличные'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['history', 'История'], ['tk', 'Техкарты']];
+  const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['tk', 'Техкарты']];
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
   return t;
 }
@@ -918,7 +918,8 @@ const HELP = [
     'Своего имени в списке нет — напиши администратору.']],
   ['🧭', 'Что где в приложении', [
     'Сегодня — кто на смене, твои смены, замены, проблемы и что сварить сегодня.',
-    'Закрытие — чек-лист, фото и остатки на закрытии смены.',
+    'Закрытие — чек-лист, фото, остатки, касса и конверт на закрытии смены.',
+    'Наличные — расходы из кассы и конверта, внесения в конверт.',
     'Задачи — задачи от администратора.',
     'События — брони столов и собрания.',
     'Холодильник — партии заготовок и их сроки, морозилка.',
@@ -943,10 +944,20 @@ const HELP = [
   ['🌙', 'Закрытие смены', [
     'Вкладка «Закрытие» доступна тем, кто закрывает смену по графику (смена до 22:00 и позже).',
     'Напоминание «Пора закрываться» приходит в 21:30 с понедельника по четверг и в 22:30 с пятницы по воскресенье.',
-    'Чтобы закрыть смену, нужно три вещи: отметить все пункты чек-листа, добавить минимум 3 фото (бар, витрина, мойка) и вписать остатки всех заготовок.',
+    'Чтобы закрыть смену, нужно: отметить все пункты чек-листа, добавить минимум 3 фото (бар, витрина, мойка), вписать остатки всех заготовок и заполнить блок «Касса и конверт».',
+    '«Касса и конверт»: выручка за день всего (карта, Узум, наличные — всё вместе), из неё наличными, остаток наличных по отчёту iiko, сколько наличных в кассе по факту (пересчитай) и сколько денег в конверте (пересчитай).',
+    'Перед закрытием проверь, что все расходы из кассы и перекладывания в конверт записаны во вкладке «Наличные» — иначе бот покажет недостачу.',
     'Пока чего-то не хватает, на кнопке написано, чего именно. Когда всё готово — нажми «Закрыть смену».',
     'Всё сохраняется по ходу: если закрыл приложение, продолжишь с того же места.',
     'Ошибся в остатках — нажми «Изменить подсчёт» и отправь заново.']],
+  ['💵', 'Наличные: касса и конверт', [
+    'Брать наличные можно из двух мест: из кассы (за сегодня, вчера или позавчера) и из конверта. Каждый расход сразу записывай во вкладке «Наличные».',
+    '«− Расход»: выбери, откуда взял (Касса и день или Конверт), на что потратил (Хлеб, ЗП стажёру, Продукты, Хозтовары или Другое — тогда напиши название), впиши сумму и нажми «Записать расход». Для ЗП стажёру выбери, кому.',
+    '«+ Внести»: положил деньги в конверт — выбери, откуда деньги (из кассы и за какой день, или принесли со стороны), впиши сумму и нажми «Внести».',
+    'Сумму можно писать как удобно: «200 000», «200000», «200к», «1,5 млн» — под полем видно, как бот её понял.',
+    'Ошибся — нажми ✏️ у своей записи: можно исправить или отменить в тот же день. Администратор увидит, кто и что поправил. Если конверт уже пересчитали на закрытии, исправить запись по конверту может только администратор.',
+    'На закрытии бот сверяет кассу (остаток по iiko − расходы из кассы − переложенное в конверт) и конверт (прошлый пересчёт + внесения − расходы) с тем, что ты насчитал. Если не сходится, администратор сразу получит отчёт.',
+    'Расход от 500 000 сум администратор получает сразу. Все операции и отчёты закрытий сохраняются в Google-таблицу.']],
   ['🧊', 'Холодильник', [
     'Здесь видно каждую партию заготовок и сколько дней ей осталось. Сверху — то, что истекает раньше.',
     '«Последний день» — используйте в первую очередь. «Срок истёк» — списать.',
@@ -1017,7 +1028,106 @@ function needRow(i) {
     <div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div></div>`;
 }
 
+
+// ===== НАЛИЧНЫЕ =====
+// Суммы: «200 000», «200000 сум», «200к», «1,5 млн»
+const parseMoney = v => {
+  const s = String(v == null ? '' : v).toLowerCase().replace(/сум|sum|\s/g, '').replace(',', '.');
+  const m = s.match(/^(\d+(?:\.\d+)?)(к|k|т|тыс|млн|m)?$/);
+  if (!m) return NaN;
+  return Math.round(Number(m[1]) * (!m[2] ? 1 : /млн|m/.test(m[2]) ? 1e6 : 1e3));
+};
+const money = x => { x = Math.round(Number(x) || 0); return (x < 0 ? '−' : '') + String(Math.abs(x)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' сум'; };
+let cashD = null;
+const dmy = d => d.slice(8, 10) + '.' + d.slice(5, 7);
+function cashOpRow(o) {
+  const t = new Date(o.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `<div class="task" style="${o.canceled ? 'opacity:.5' : ''}"><div class="pname"><b style="${o.canceled ? 'text-decoration:line-through' : ''}">${o.kind === 'in' ? '+' : '−'}${esc(money(o.amount))} · ${esc(o.what)}</b>
+    <span>${esc(o.srcLabel)} · ${esc(o.byName)} · ${t}${o.canceled ? ' · отменено' : o.edited ? ' · исправлено' : ''}${o.back ? ' · задним числом' : ''}</span></div>
+    ${o.canEdit ? `<button class="tkbtn" data-cedit="${esc(o.id)}">✏️</button>` : ''}</div>`;
+}
+function cashHtml() {
+  const d = cashD, out = [];
+  out.push(card(`<h2>💵 Наличные</h2><p class="sub">Потратил из кассы или из конверта — сразу запиши сюда. Положил деньги в конверт — нажми «+ Внести»</p>
+    <div style="display:flex;gap:8px"><button class="btn" id="cExp" style="flex:1;margin-top:0">− Расход</button><button class="btn ok" id="cIn" style="flex:1;margin-top:0">+ Внести</button></div>`));
+  if (d.env) {
+    const e = d.env;
+    out.push(card(`<h2>✉️ Конверт</h2>` + (e.known
+      ? `<div style="font-size:30px;font-weight:700;margin:6px 0 0;white-space:nowrap">${esc(money(e.exp))}</div><p class="sub" style="margin:0">должно быть в конверте сейчас</p><p class="sub" style="margin:8px 0 0">Пересчёт ${esc(dmy(e.baseDate))} (${esc(e.baseBy)}): ${esc(money(e.base))} · + внесения ${esc(money(e.ins))} · − расходы ${esc(money(e.exps))}</p>`
+      : `<p class="sub">Пересчёта ещё не было — первый будет на закрытии смены, с него бот начнёт считать остаток.</p>`) +
+      `<p class="sub" style="margin:8px 0 0">Это видят только админы — сотрудники пересчитывают конверт «вслепую».</p>`));
+  }
+  const lbl = ['Сегодня', 'Вчера', 'Позавчера'];
+  d.days.forEach((day, i) => {
+    const ops = d.ops.filter(o => o.date === day);
+    if (!ops.length && i) return;
+    const live = ops.filter(o => !o.canceled), sum = f => live.filter(f).reduce((a, o) => a + o.amount, 0);
+    const kx = sum(o => o.kind === 'exp' && o.src === 'kassa'), ex = sum(o => o.kind === 'exp' && o.src === 'env'), inn = sum(o => o.kind === 'in');
+    out.push(card(`<h2>${lbl[i]} · ${dmy(day)}</h2>` + (ops.length
+      ? `<p class="sub">${[kx ? 'из кассы −' + money(kx) : '', ex ? 'из конверта −' + money(ex) : '', inn ? 'в конверт +' + money(inn) : ''].filter(Boolean).join(' · ') || 'всё отменено'}</p>` + ops.map(cashOpRow).join('')
+      : `<p class="sub">Записей пока нет</p>`)));
+  });
+  return out.join('');
+}
+// Окошко расхода / внесения. op — запись для исправления
+function openCashForm(kind, op) {
+  closeSheet();
+  const d = cashD, st = op ? { src: op.src, kd: op.kd || d.today, cat: op.cat, person: op.person, amount: String(op.amount), note: op.note, back: false }
+    : { src: 'kassa', kd: d.today, cat: '', person: '', amount: '', note: '', back: false, from: '' };
+  if (op) st.from = op.from || '';
+  const lbl = ['Сегодня', 'Вчера', 'Позавчера'];
+  const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+  const draw = () => {
+    const isExp = kind === 'exp', a = parseMoney(st.amount);
+    wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>${op ? '✏️ Исправить запись' : isExp ? '− Расход наличными' : '+ Внести в конверт'}</h2>
+      ${isExp ? `<p class="sub" style="margin-top:4px">Откуда взяли деньги</p><div class="chips"><button class="chip ${st.src === 'kassa' ? 'on' : ''}" data-src="kassa">Касса</button><button class="chip ${st.src === 'env' ? 'on' : ''}" data-src="env">✉️ Конверт</button></div>
+        ${st.src === 'kassa' ? `<p class="sub" style="margin-top:10px">Касса за какой день</p><div class="chips">${d.days.map((x, i) => `<button class="chip ${st.kd === x ? 'on' : ''}" data-kd="${x}">${lbl[i]} ${dmy(x)}</button>`).join('')}</div>` : ''}
+        <p class="sub" style="margin-top:10px">На что потратили</p><div class="chips">${d.cats.map(c => `<button class="chip ${st.cat === c ? 'on' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+        ${st.cat === 'ЗП стажёру' ? `<p class="sub" style="margin-top:10px">Кому</p><div class="chips">${d.people.map(n => `<button class="chip ${st.person === n ? 'on' : ''}" data-person="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}`
+        : `<p class="sub" style="margin-top:4px">Откуда деньги</p><div class="chips"><button class="chip ${st.from === 'kassa' ? 'on' : ''}" data-from="kassa">Из кассы</button><button class="chip ${st.from === 'other' ? 'on' : ''}" data-from="other">Принесли со стороны</button></div>
+          ${st.from === 'kassa' ? `<p class="sub" style="margin-top:10px">Из кассы за какой день</p><div class="chips">${d.days.map((x, i) => `<button class="chip ${st.kd === x ? 'on' : ''}" data-kd="${x}">${lbl[i]} ${dmy(x)}</button>`).join('')}</div>` : ''}`}
+      <div class="form"><label>Сумма</label><input id="cAmt" inputmode="text" placeholder="Например: 200 000 или 200к" value="${esc(st.amount)}">
+        <p class="sub" id="cAmtP" style="margin:6px 2px 0">${a > 0 ? '= ' + money(a) : ''}</p>
+        <label>${isExp && st.cat === 'Другое' ? 'Название расхода *' : isExp ? 'Описание (необязательно)' : 'Комментарий (необязательно)'}</label>
+        <input id="cNote" maxlength="200" placeholder="${isExp && st.cat === 'Другое' ? 'Например: ремонт кофемолки' : isExp ? 'Например: 10 батонов' : 'Например: из кассы за 19.10'}" value="${esc(st.note)}"></div>
+      ${me.isAdmin && !op && (isExp ? st.src === 'env' : st.from !== 'kassa') ? `<div class="check ${st.back ? 'on' : ''}" id="cBack" style="margin-top:10px"><div class="box">✓</div><div class="pname"><b>Задним числом</b><span>Деньги уже учтены в последнем пересчёте конверта — на «должно быть» не повлияет</span></div></div>` : ''}
+      <button class="btn" id="cSave">${op ? 'Сохранить' : isExp ? 'Записать расход' : 'Внести'}</button>
+      ${op ? '<button class="btn soft" id="cDel">Отменить запись</button>' : ''}<button class="btn soft" id="closeSheet">Закрыть</button></div>`;
+    const keep = () => { st.amount = wrap.querySelector('#cAmt').value; st.note = wrap.querySelector('#cNote').value; };
+    wrap.querySelectorAll('[data-src]').forEach(b => b.onclick = () => { keep(); st.src = b.dataset.src; draw(); });
+    wrap.querySelectorAll('[data-from]').forEach(b => b.onclick = () => { keep(); st.from = b.dataset.from; draw(); });
+    wrap.querySelectorAll('[data-kd]').forEach(b => b.onclick = () => { keep(); st.kd = b.dataset.kd; draw(); });
+    wrap.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { keep(); st.cat = b.dataset.cat; draw(); });
+    wrap.querySelectorAll('[data-person]').forEach(b => b.onclick = () => { keep(); st.person = b.dataset.person; draw(); });
+    const bk = wrap.querySelector('#cBack'); if (bk) bk.onclick = () => { keep(); st.back = !st.back; draw(); };
+    const amt = wrap.querySelector('#cAmt');
+    amt.oninput = () => { const v = parseMoney(amt.value); wrap.querySelector('#cAmtP').textContent = v > 0 ? '= ' + money(v) : amt.value.trim() ? 'Не понял сумму — пиши цифрами, например 200 000' : ''; };
+    wrap.querySelector('#closeSheet').onclick = closeSheet;
+    const send = async (ev, payload) => {
+      ev.target.disabled = true;
+      try { cashD = await call(op ? 'cashEdit' : 'cashAdd', payload); cashD.fresh = true; haptic('success'); toast(payload.cancel ? 'Запись отменена' : op ? 'Исправлено ✅' : kind === 'exp' ? 'Расход записан ✅' : 'Внесено ✅'); closeSheet(); render(); }
+      catch (e) { toast(e.message); ev.target.disabled = false; }
+    };
+    wrap.querySelector('#cSave').onclick = ev => {
+      keep();
+      const a = parseMoney(st.amount);
+      if (!(a > 0)) return toast('Впиши сумму');
+      if (kind === 'exp' && !st.cat) return toast('Выбери, на что потратили');
+      if (kind === 'in' && !st.from) return toast('Выбери, откуда деньги');
+      if (st.cat === 'ЗП стажёру' && !st.person) return toast('Выбери, кому ЗП');
+      if (st.cat === 'Другое' && !st.note.trim()) return toast('Напиши название расхода');
+      send(ev, Object.assign({ kind, amount: a, note: st.note.trim(), src: st.src, kd: st.kd, cat: st.cat, from: st.from, person: st.cat === 'ЗП стажёру' ? st.person : '', back: st.back }, op ? { id: op.id } : {}));
+    };
+    const del = wrap.querySelector('#cDel');
+    if (del) del.onclick = async ev => { if (await confirmBox('Отменить эту запись? Она останется в истории зачёркнутой.')) send(ev, { id: op.id, cancel: true }); };
+  };
+  draw();
+  document.body.appendChild(wrap);
+  wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+}
+
 const views = {
+  async cash() { if (!cashD || !cashD.fresh) cashD = await call('cash'); cashD.fresh = false; return cashHtml(); },
   async count() {
     if (lastResult) {
       const items = lastResult.items;
@@ -1046,7 +1156,15 @@ const views = {
       cl.map((t, k) => `<div class="check ${checks.has(k) ? 'on' : ''}" data-ci="${k}"><div class="box">✓</div><div class="pname"><b>${esc(t)}</b></div></div>`).join('')) : '';
     const phHtml = card(`<h2>Фото закрытия</h2><p class="sub">Бар, витрина, мойка — <b>минимум 3</b>, до 10 фото</p><div class="photos" id="phgrid">${photosGrid()}</div>
       <input type="file" id="phinput" accept="image/*" multiple style="display:none">`);
-    return clHtml + phHtml + card(`<h2>Остатки заготовок</h2>${last}
+    const cv = k => esc(draft['$' + k] != null ? draft['$' + k] : '');
+    const cashHtml = card(`<h2>💵 Касса и конверт</h2><p class="sub">Без этого смену не закрыть. Суммы в сумах, можно писать «4 500 000» или «4500к»</p>
+      <div class="form"><label>Выручка за день — всего (карта, Узум, наличные…)</label><input data-cash="rev" inputmode="text" enterkeyhint="next" placeholder="Например: 4 500 000" value="${cv('rev')}">
+      <label>Из неё наличными</label><input data-cash="cr" inputmode="text" enterkeyhint="next" placeholder="Например: 1 200 000" value="${cv('cr')}">
+      <label>Остаток наличных по отчёту iiko</label><input data-cash="ik" inputmode="text" enterkeyhint="next" placeholder="Сумма из распечатки iiko" value="${cv('ik')}">
+      <label>💵 Пересчитай кассу — сколько наличных по факту</label><input data-cash="cf" inputmode="text" enterkeyhint="next" placeholder="Например: 1 150 000" value="${cv('cf')}">
+      <label>✉️ Пересчитай конверт — сколько в нём сейчас</label><input data-cash="env" inputmode="text" enterkeyhint="done" placeholder="Например: 2 350 000" value="${cv('env')}"></div>
+      <p class="sub" id="cashHint" style="margin-top:10px"></p>`);
+    return clHtml + phHtml + cashHtml + card(`<h2>Остатки заготовок</h2>${last}
       <div class="progress"><i id="prog" style="width:0"></i></div><p class="sub" id="progt" style="margin:0 0 4px"></p>${rows}`) +
       `<div class="dock"><button class="btn" id="send">${cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'}</button></div>`;
   },
@@ -1312,6 +1430,12 @@ const views = {
 };
 
 const binds = {
+  cash() {
+    const e = document.getElementById('cExp'), i = document.getElementById('cIn');
+    if (e) e.onclick = () => openCashForm('exp');
+    if (i) i.onclick = () => openCashForm('in');
+    document.querySelectorAll('[data-cedit]').forEach(b => b.onclick = () => { const o = cashD.ops.find(x => x.id === b.dataset.cedit); if (o) openCashForm(o.kind, o); });
+  },
   count() {
     const again = document.getElementById('again');
     if (again) again.onclick = () => { lastResult = null; render(); };
@@ -1326,6 +1450,16 @@ const binds = {
       try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
     });
     const inputs = [...document.querySelectorAll('input[data-id]')];
+    const cashIn = [...document.querySelectorAll('input[data-cash]')], cashVal = k => { const i = cashIn.find(x => x.dataset.cash === k); return i ? parseMoney(i.value) : NaN; };
+    // подсказка: что уже записано из кассы через «Наличные» (бот вычтет это из остатка iiko)
+    const cashHint = () => {
+      const h = document.getElementById('cashHint'); if (!h) return;
+      const o = me.cashOut || {}, parts = [o.exp ? 'расходы ' + money(o.exp) : '', o.toEnv ? 'в конверт ' + money(o.toEnv) : ''].filter(Boolean);
+      h.innerHTML = (parts.length ? 'Из кассы за сегодня записано: ' + parts.join(', ') + '. ' : 'Из кассы за сегодня ничего не записано. ') +
+        'Если что-то брали из кассы и не записали — сначала внеси во вкладке «Наличные».';
+    };
+    cashIn.forEach(i => i.oninput = () => { draft['$' + i.dataset.cash] = i.value; saveDraft(); cashHint(); syncBtn(); });
+    cashHint();
     // что ещё мешает закрыть смену
     const MIN_PH = 3;
     const missing = () => {
@@ -1334,6 +1468,7 @@ const binds = {
       if (cMiss > 0) m.push(cMiss + ' ' + (cMiss === 1 ? 'пункт' : cMiss < 5 ? 'пункта' : 'пунктов'));
       if (ph < MIN_PH) m.push((MIN_PH - ph) + ' фото');
       if (vMiss > 0) m.push(vMiss + ' ' + (vMiss === 1 ? 'остаток' : vMiss < 5 ? 'остатка' : 'остатков'));
+      if (cashIn.length && cashIn.some(i => !(parseMoney(i.value) >= 0))) m.push('касса');
       return m;
     };
     const syncBtn = () => {
@@ -1360,6 +1495,8 @@ const binds = {
       const values = {}; let emptyN = 0, bad = 0;
       inputs.forEach(i => { const v = toNum(i.value); if (v === '') emptyN++; else if (isNaN(v) || v < 0) bad++; else values[i.dataset.id] = v; });
       if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
+      if (cashVal('cr') > cashVal('rev')) { toast('Наличных не может быть больше общей выручки — проверь цифры'); haptic('error'); return; }
+      const cash = { rev: cashVal('rev'), cr: cashVal('cr'), ik: cashVal('ik'), cf: cashVal('cf'), env: cashVal('env') };
       if (photos.some(p => p.loading)) { toast('Подожди, фото ещё загружаются…'); return; }
       const m = missing();
       let force = false;
@@ -1370,7 +1507,7 @@ const binds = {
         force = true;
       }
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force }); draft = {}; checks.clear(); photos = []; hist = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); }
+      try { lastResult = await call('count', { values, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash }); draft = {}; checks.clear(); photos = []; hist = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
