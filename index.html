@@ -945,7 +945,7 @@ const HELP = [
     'Вкладка «Закрытие» доступна тем, кто закрывает смену по графику (смена до 22:00 и позже).',
     'Напоминание «Пора закрываться» приходит в 21:30 с понедельника по четверг и в 22:30 с пятницы по воскресенье.',
     'Чтобы закрыть смену, нужно: отметить все пункты чек-листа, добавить минимум 3 фото (бар, витрина, мойка), вписать остатки всех заготовок и заполнить блок «Касса и конверт».',
-    '«Касса и конверт»: выручка за день всего (карта, Узум, наличные — всё вместе), из неё наличными, остаток наличных по отчёту iiko, сколько наличных в кассе по факту (пересчитай) и сколько денег в конверте (пересчитай).',
+    '«Касса и конверт»: выручка за день всего (карта, Узум, наличные — всё вместе), наличные по отчёту iiko, сколько наличных в кассе по факту (пересчитай) и сколько денег в конверте (пересчитай).',
     'Перед закрытием проверь, что все расходы из кассы и перекладывания в конверт записаны во вкладке «Наличные» — иначе бот покажет недостачу.',
     'Пока чего-то не хватает, на кнопке написано, чего именно. Когда всё готово — нажми «Закрыть смену».',
     'Всё сохраняется по ходу: если закрыл приложение, продолжишь с того же места.',
@@ -1159,8 +1159,7 @@ const views = {
     const cv = k => esc(draft['$' + k] != null ? draft['$' + k] : '');
     const cashHtml = card(`<h2>💵 Касса и конверт</h2><p class="sub">Без этого смену не закрыть. Суммы в сумах, можно писать «4 500 000» или «4500к»</p>
       <div class="form"><label>Выручка за день — всего (карта, Узум, наличные…)</label><input data-cash="rev" inputmode="text" enterkeyhint="next" placeholder="Например: 4 500 000" value="${cv('rev')}">
-      <label>Из неё наличными</label><input data-cash="cr" inputmode="text" enterkeyhint="next" placeholder="Например: 1 200 000" value="${cv('cr')}">
-      <label>Остаток наличных по отчёту iiko</label><input data-cash="ik" inputmode="text" enterkeyhint="next" placeholder="Сумма из распечатки iiko" value="${cv('ik')}">
+      <label>Наличные по отчёту iiko</label><input data-cash="ik" inputmode="text" enterkeyhint="next" placeholder="Сумма из распечатки iiko" value="${cv('ik')}">
       <label>💵 Пересчитай кассу — сколько наличных по факту</label><input data-cash="cf" inputmode="text" enterkeyhint="next" placeholder="Например: 1 150 000" value="${cv('cf')}">
       <label>✉️ Пересчитай конверт — сколько в нём сейчас</label><input data-cash="env" inputmode="text" enterkeyhint="done" placeholder="Например: 2 350 000" value="${cv('env')}"></div>
       <p class="sub" id="cashHint" style="margin-top:10px"></p>`);
@@ -1495,8 +1494,7 @@ const binds = {
       const values = {}; let emptyN = 0, bad = 0;
       inputs.forEach(i => { const v = toNum(i.value); if (v === '') emptyN++; else if (isNaN(v) || v < 0) bad++; else values[i.dataset.id] = v; });
       if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
-      if (cashVal('cr') > cashVal('rev')) { toast('Наличных не может быть больше общей выручки — проверь цифры'); haptic('error'); return; }
-      const cash = { rev: cashVal('rev'), cr: cashVal('cr'), ik: cashVal('ik'), cf: cashVal('cf'), env: cashVal('env') };
+      const cash = { rev: cashVal('rev'), ik: cashVal('ik'), cf: cashVal('cf'), env: cashVal('env') };
       if (photos.some(p => p.loading)) { toast('Подожди, фото ещё загружаются…'); return; }
       const m = missing();
       let force = false;
