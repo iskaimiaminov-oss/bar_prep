@@ -901,7 +901,9 @@ const views = {
     let out = shiftCard() + '<div id="homeExtra"></div>';
     const ro = me.isViewer;
     const thawed = t.thawed || {};
-    const madeRow = i => `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>${thawed[i.pid] ? '❄️ разморозил(а)' : 'сварил(а)'} ${esc(made[i.pid])}${ylds[i.pid] != null ? ' · ' + (thawed[i.pid] ? '' : 'выход ') + fmt(ylds[i.pid]) + ' ' + esc(i.unit) : ''}</span></div></div>`;
+    const yEdit = t.yEdit || {};
+    // сваренное: можно исправить выход, если ошиблись при отметке (кроме разморозки)
+    const madeRow = i => `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>${thawed[i.pid] ? '❄️ разморозил(а)' : 'сварил(а)'} ${esc(made[i.pid])}${ylds[i.pid] != null ? ' · ' + (thawed[i.pid] ? '' : 'выход ') + fmt(ylds[i.pid]) + ' ' + esc(i.unit) : ''}${yEdit[i.pid] ? ' · исправил(а) ' + esc(yEdit[i.pid]) : ''}</span></div>${!ro && !thawed[i.pid] && ylds[i.pid] != null ? `<button class="tkbtn" data-yedit="${esc(i.pid)}">✏️ Выход</button>` : ''}</div>`;
     // заготовки, которые замораживают: при отметке — сколько из сваренного ушло в морозилку
     const isFrz = pid => { const p = me.preps.find(x => x.id === pid); return p && p.frz; };
     const fzField = (pid, unit) => isFrz(pid) ? `<label class="yld"><em>❄️ Из них в морозилку</em><span class="field"><input data-fz="${esc(pid)}" inputmode="decimal" placeholder="0" value="${esc(fzv[pid] != null ? fzv[pid] : '')}"><small>${esc(unit)}</small></span></label>` : '';
@@ -1230,6 +1232,15 @@ const binds = {
       catch (er) { toast(er.message); }
     });
     document.querySelectorAll('[data-fz]').forEach(inp => inp.oninput = () => { fzv[inp.dataset.fz] = inp.value; });
+    // «✏️ Выход» — исправить итоговый выход у уже отмеченной заготовки
+    document.querySelectorAll('[data-yedit]').forEach(b => b.onclick = async e => {
+      e.stopPropagation();
+      const pid = b.dataset.yedit, p = me.preps.find(x => x.id === pid) || {}, cur = (me.today.yields || {})[pid];
+      const q = await askQty('✏️ Выход: ' + (p.name || ''), 'Сейчас записано ' + fmt(cur) + ' ' + esc(p.unit || '') + '. Впиши, сколько получилось на самом деле', cur, p.unit, 'Сохранить');
+      if (q == null || q === cur) return;
+      try { await call('editYield', { pid, q }); fridgeData = null; haptic('success'); toast('Выход исправлен ✅'); me = await call('me'); render(); }
+      catch (er) { toast(er.message); }
+    });
     const xb = document.getElementById('extraBox');
     if (xb) xb.addEventListener('toggle', () => { extraOpen = xb.open; });
     const btn = document.getElementById('made'); if (!btn) return;
