@@ -403,9 +403,9 @@ function header() {
 function tabsList() {
   if (me.orderer && !me.isAdmin) return [['order', 'Заказ']];
   const tasksLbl = 'Задачи' + (me.openTasks ? `<span class="tabcount">${me.openTasks}</span>` : '');
-  if (me.isViewer) return [['today', 'Сегодня'], ['cash', 'Наличные'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['history', 'История'], ['tk', 'Техкарты']];
   const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['tk', 'Техкарты']];
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
+  else if (me.isViewer) t.push(['history', 'История']);   // админ-наблюдатель: всё как у сотрудника + история закрытий
   return t;
 }
 render.seq = 0;
@@ -566,6 +566,39 @@ async function openClosing(x) {
   });
 }
 
+
+// ===== ТОЧКА ЗАБРАЛА ЗАКАЗ =====
+function pickupCard() {
+  const k = me.pickup; if (!k) return '';
+  const byId = {}; me.preps.forEach(p => byId[p.id] = p);
+  if (k.picked) return card(`<h2>📦 Заказ на сегодня забран</h2><p class="sub">${new Date(k.picked.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}: ` +
+    Object.keys(k.picked.items).map(pid => esc((byId[pid] || {}).name || pid) + ' ' + fmt(k.picked.items[pid]) + ' ' + esc((byId[pid] || {}).unit || '')).join(', ') + '</p>');
+  const has = Object.keys(k.items).length;
+  return card(`<h2>📦 Забрать заказ</h2><p class="sub">${has ? 'Сегодняшний заказ: ' + Object.keys(k.items).map(pid => esc((byId[pid] || {}).name || pid) + ' ' + fmt(k.items[pid]) + ' ' + esc((byId[pid] || {}).unit || '')).join(', ') + '. ' : ''}Взял(а) заготовки — нажми и впиши, сколько забрал(а) на самом деле.</p>
+    <button class="btn" id="pickBtn">📦 Забрал заказ</button>`);
+}
+function openPickup() {
+  const k = me.pickup; if (!k) return;
+  closeSheet();
+  const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+  const rows = me.preps.map(p => `<div class="prow"><div class="pname"><b>${esc(p.name)}</b>${k.items[p.id] != null ? `<span>в заказе ${fmt(k.items[p.id])} ${esc(p.unit)}</span>` : ''}</div>
+    <label class="field"><input inputmode="decimal" data-pk="${esc(p.id)}" value="${k.items[p.id] != null ? esc(String(k.items[p.id]).replace('.', ',')) : ''}" placeholder="0"><small>${esc(p.unit)}</small></label></div>`).join('');
+  wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>📦 Забрал заказ</h2>
+    <p class="sub" style="margin-top:4px">Проверь цифры: если чего-то не хватило или взял(а) больше — поправь. Это вычтется из холодильника бара</p>${rows}
+    <button class="btn" id="pkSend">Подтвердить</button><button class="btn soft" id="closeSheet">Отмена</button></div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#closeSheet').onclick = closeSheet;
+  wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+  wrap.querySelector('#pkSend').onclick = async ev => {
+    const items = {}; let bad = 0;
+    wrap.querySelectorAll('[data-pk]').forEach(i => { const v = toNum(i.value); if (v === '') return; if (isNaN(v) || v < 0) bad++; else if (v > 0) items[i.dataset.pk] = v; });
+    if (bad) return toast('Проверь числа');
+    if (!Object.keys(items).length) return toast('Впиши, сколько забрал(а)');
+    ev.target.disabled = true;
+    try { const r = await call('orderPickup', { items }); me.pickup = r.pickup; haptic('success'); toast('Отмечено, спасибо! 📦'); closeSheet(); render(); }
+    catch (e) { toast(e.message); ev.target.disabled = false; }
+  };
+}
 
 // ===== ГЕНУБОРКА (пн–ср) =====
 function guCard() {
@@ -770,7 +803,7 @@ function homeExtraHtml(d) {
   const today = me.today.date;
   out += guCard();
   // мои смены на 7 дней (у владельца бота скрыто — мешает)
-  if (d.week && d.week.length && !me.isViewer && !me.isAdmin) {
+  if (d.week && d.week.length && !me.isAdmin) {
     const mySwap = date => (d.swaps || []).find(w => w.mine && w.date === date);
     out += card(`<h2>Мои смены</h2><p class="sub">Ближайшие 7 дней</p>` + d.week.map(w => {
       const dt = new Date(w.date + 'T12:00:00Z'), lbl = w.date === today ? 'сегодня' : dt.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -786,7 +819,7 @@ function homeExtraHtml(d) {
   const others = (d.swaps || []).filter(w => !w.mine || me.isAdmin);
   if (others.length) out += card(`<h2>🔄 Ищут замену</h2>` + others.map(w => `<div class="shift"><div class="pname"><b>${esc(w.byName)}</b> <span class="mini">${w.mode === 'swap' ? '🔄 обмен' : '🙋 отдаёт'}</span>
       <span>${new Date(w.date + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })} · ${hmS(w.from)}–${hmS(w.to)}${w.status === 'taken' ? ' · ' + (w.mode === 'swap' ? 'меняется ' : 'берёт ') + esc(w.takerName) : ''}</span></div>
-      ${w.status === 'open' && !w.mine && !me.isViewer ? `<button class="tkbtn" data-take="${esc(w.id)}" data-mode="${w.mode === 'swap' ? 'swap' : 'give'}">${w.mode === 'swap' ? '🔄 Поменяюсь' : '🙋 Возьму'}</button>` : ''}
+      ${w.status === 'open' && !w.mine ? `<button class="tkbtn" data-take="${esc(w.id)}" data-mode="${w.mode === 'swap' ? 'swap' : 'give'}">${w.mode === 'swap' ? '🔄 Поменяюсь' : '🙋 Возьму'}</button>` : ''}
       ${w.mine || me.isAdmin ? `<button class="x" data-swcancel="${esc(w.id)}">×</button>` : ''}</div>`).join(''));
   // дни рождения на неделю вперёд
   const bd = d.bdays || {}, soon = [];
@@ -1027,6 +1060,10 @@ const HELP = [
     'Короткие видео о том, как пользоваться ботом: знакомство, «Сегодня», заготовки, холодильник и техкарты, закрытие смены, наличные, замена смены, брони и задачи (и отдельно — заказ для Яндекса и Узума).',
     'Новым сотрудникам видео приходят в личку сами сразу после регистрации.',
     'Пересмотреть в любой момент: блок «🎬 Видео-обучение» вверху этой инструкции — нажми на серию, и бот пришлёт её в чат.']],
+  ['📦', 'Для Яндекса и Узума: заказ и «Забрал заказ»', [
+    'Во вкладке «Заказ» впиши, сколько каких заготовок нужно. В 08:00 заказ уйдёт в группу бара — утренняя смена подготовит, если успеет.',
+    'Забираешь заготовки сам(а) — нажми «📦 Забрал заказ», проверь цифры (поправь, если взял(а) больше или меньше) и подтверди.',
+    'Забранное сразу вычитается из холодильника бара, а управляющие и старшие баристы получают сообщение, что и сколько ты взял(а).']],
   ['🧭', 'Что где в приложении', [
     'Сегодня — кто на смене, твои смены, замены, проблемы и что сварить сегодня.',
     'Закрытие — чек-лист, фото, остатки, касса и конверт на закрытии смены.',
@@ -1301,7 +1338,7 @@ const views = {
     const t = me.today, made = t.made || {}, ylds = t.yields || {};
     const hasTk = pid => { const p = me.preps.find(x => x.id === pid); return p && p.tk; };
     let out = shiftCard() + '<div id="homeExtra"></div>';
-    const ro = me.isViewer;
+    const ro = false;   // админы-наблюдатели отмечают заготовки, как все
     const thawed = t.thawed || {};
     const yEdit = t.yEdit || {};
     // сваренное: можно исправить выход, если ошиблись при отметке (кроме разморозки)
@@ -1406,7 +1443,7 @@ const views = {
     if (!me.preps.length) return empty('🫙', 'Заготовок пока нет', 'Администратор ещё не добавил список.');
     const when = o.date ? new Date(o.date + 'T12:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
     const has = Object.keys(o.items).length;
-    const guTop = guCard();
+    const guTop = guCard() + pickupCard();
     const rows = me.preps.map(p => {
       const v = orderDraft[p.id] != null ? orderDraft[p.id] : (o.items[p.id] != null ? String(o.items[p.id]) : '');
       return `<div class="prow"><div class="pname"><b>${esc(p.name)}</b></div>
@@ -1528,7 +1565,7 @@ const views = {
     const stNames = (cfg.schedule || []).filter(n => (cfg.off || []).indexOf(n) < 0).concat(cfg.extra || []);
     const statusCard = card(`<h2>Статусы</h2><p class="sub">Нажми на статус — сохраняется сразу. Цвет видно на главном экране</p>` +
       stNames.map(n => `<div class="strow"><b>${esc(n)}</b> ${stBadge(sts[n])}<label style="float:right;font-size:13px;color:var(--muted)">🎂 <input class="bdin" data-bd="${esc(n)}" placeholder="дд.мм" inputmode="numeric" maxlength="5" value="${(cfg.bdays || {})[n] ? cfg.bdays[n].slice(3) + '.' + cfg.bdays[n].slice(0, 2) : ''}"></label><div class="seg">${ST_LIST.map((st, k) => `<button data-stname="${esc(n)}" data-st="${st}" class="${sts[n] === st ? 'on st' + k : ''}">${ST_LABEL[st]}</button>`).join('')}</div></div>`).join(''));
-    const usersCard = card(`<h2>Подключены к боту</h2><p class="sub">«🛡 Админ» — видит историю закрытий и фото, ставит задачи и создаёт события. Заготовки, команду и закрытие смены менять не может</p>${users}`);
+    const usersCard = card(`<h2>Подключены к боту</h2><p class="sub">«🛡 Админ» — работает как обычный сотрудник (отмечает заготовки, закрывает смену по графику, берёт замены), плюс видит историю закрытий и фото, ставит задачи и создаёт события. Список заготовок и команду менять не может</p>${users}`);
     return card(`<h2>Команда бара</h2><p class="sub">Все из графика этого месяца попадают сюда сами. Новый человек в графике — появится тут, убрали из графика — пропадёт. Нажми на имя, чтобы выключить того, кто не работает в баре.</p><div class="chips">${chips}</div>
         <h3>Добавить вручную</h3><p class="sub">Если человека нет в графике</p>${extra}
         <div class="cl-row" style="margin-top:8px"><input id="newName" placeholder="Имя" style="min-width:0;flex:1;border:1.5px solid transparent;background:var(--cream);border-radius:10px;padding:10px 12px;outline:none"><button class="tkbtn" id="addName" style="padding:10px 14px;flex:0 0 auto">Добавить</button></div>
@@ -1818,6 +1855,7 @@ const binds = {
   },
   order() {
     bindGu();
+    const pb = document.getElementById('pickBtn'); if (pb) pb.onclick = openPickup;
     document.querySelectorAll('[data-oid]').forEach(i => i.oninput = () => { orderDraft[i.dataset.oid] = i.value; });
     const btn = document.getElementById('sendOrder'); if (!btn) return;
     btn.onclick = async () => {
@@ -1997,7 +2035,7 @@ function initPull() {
     me = await call('me');
     const restored = me.canClose && loadDraft();
     const h = new Date().getHours();
-    if (me.canClose && !me.isViewer && (h >= 20 || h < 3)) tab = 'count';
+    if (me.canClose && (h >= 20 || h < 3)) tab = 'count';
     if (me.orderer && !me.isAdmin) tab = 'order';
     if (restored) tab = 'count';
     render();
