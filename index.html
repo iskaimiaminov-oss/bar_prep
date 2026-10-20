@@ -747,7 +747,7 @@ function keepForm(p) { document.querySelectorAll(`[id^="${p}"]`).forEach(el => {
 function restoreForm(p) { Object.keys(formKeep).filter(k => k[0] === p).forEach(k => { const el = document.getElementById(k); if (el) el.value = formKeep[k]; }); }
 
 // ===== График по дням (листается свайпом) =====
-const DAYS_BACK = 21, DAYS_FWD = 21;
+const DAYS_BACK = 7, DAYS_FWD = 7;   // график «На смене»: неделя назад и неделя вперёд
 const shiftCache = {}, shiftLoading = {};
 let curDay = null;
 const addD = (date, n) => { const d = new Date(date + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
@@ -1527,7 +1527,7 @@ const views = {
     const rep = me.isAdmin ? card(`<h2>🏆 Итоги 2 недель</h2><p class="sub">Рейтинг, кто сколько заготовок сварил. Приходит в группу сам раз в 2 недели в понедельник в 12:00</p><button class="btn soft" id="reportNow">Отправить итоги сейчас</button><button class="btn soft" id="weekNow" style="margin-top:8px">📊 Сводка недели мне в личку</button><button class="btn soft" id="briefNow" style="margin-top:8px">☀️ Утренний брифинг мне в личку</button>`) : '';
     if (!hist.length) return rep + empty('📜', 'Закрытий пока нет', 'Здесь появится история каждого закрытия смены.');
     const day = d => new Date(d + 'T12:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
-    return rep + card(`<h2>История закрытий</h2><p class="sub">Последние 45 дней. Нажми, чтобы посмотреть подробно</p>`) +
+    return rep + card(`<h2>История закрытий</h2><p class="sub">Последние 7 дней. Нажми, чтобы посмотреть подробно</p>`) +
       hist.map((x, k) => {
         const c = x.checks, okAll = c && c.done === c.total;
         return `<div class="card hcard" data-h="${k}"><div style="display:flex;align-items:center;gap:12px">
