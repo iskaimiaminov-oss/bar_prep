@@ -1023,6 +1023,10 @@ const HELP = [
     'Дождись, пока администратор подтвердит. Придёт сообщение «Ты зарегистрирован».',
     'Приложение открывается кнопкой «Заготовки» рядом с полем ввода сообщения или кнопкой «Открыть приложение» в сообщениях бота.',
     'Своего имени в списке нет — напиши администратору.']],
+  ['🎬', 'Видео-обучение', [
+    'Короткие видео о том, как пользоваться ботом: знакомство, «Сегодня», заготовки, холодильник и техкарты, закрытие смены, наличные, замена смены, брони и задачи (и отдельно — заказ для Яндекса и Узума).',
+    'Новым сотрудникам видео приходят в личку сами сразу после регистрации.',
+    'Пересмотреть в любой момент: блок «🎬 Видео-обучение» вверху этой инструкции — нажми на серию, и бот пришлёт её в чат.']],
   ['🧭', 'Что где в приложении', [
     'Сегодня — кто на смене, твои смены, замены, проблемы и что сварить сегодня.',
     'Закрытие — чек-лист, фото, остатки, касса и конверт на закрытии смены.',
@@ -1125,12 +1129,24 @@ function openHelp() {
   closeSheet();
   const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
   wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>Как пользоваться ботом</h2>
-    <p class="sub" style="margin-top:4px">Нажми на раздел, чтобы открыть</p>
+    <div class="card" style="padding:12px 14px;margin-top:10px"><h3 style="margin:0 0 4px">🎬 Видео-обучение</h3>
+      <p class="sub" style="margin:0 0 6px">Нажми на серию — видео придёт в чат с ботом</p><div id="trainList" class="chips"><span class="sub">Загружаю…</span></div></div>
+    <p class="sub" style="margin-top:10px">Нажми на раздел, чтобы открыть</p>
     <div class="card help" style="padding:2px 14px">${HELP.map(([ic, t, items]) => `<details><summary><span class="ic">${ic}</span>${esc(t)}</summary><ul>${items.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`).join('')}</div>
     <button class="btn soft" id="closeSheet">Закрыть</button></div>`;
   wrap.querySelector('#closeSheet').onclick = closeSheet;
   wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
   document.body.appendChild(wrap);
+  // видео-обучение: список серий, по нажатию бот присылает видео в личку
+  call('train').then(r => {
+    const box = wrap.querySelector('#trainList'); if (!box) return;
+    box.innerHTML = (r.eps || []).map(e => `<button class="chip" data-tn="${e.n}" ${e.ready ? '' : 'disabled style="opacity:.5"'}>▶ ${e.n}. ${esc(e.t)}</button>`).join('') || '<span class="sub">Видео пока нет</span>';
+    box.querySelectorAll('[data-tn]').forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      try { await call('trainSend', { n: Number(b.dataset.tn) }); haptic('success'); toast('Видео отправлено в чат с ботом 🎬'); } catch (er) { toast(er.message); }
+      b.disabled = false;
+    });
+  }).catch(() => { const box = wrap.querySelector('#trainList'); if (box) box.innerHTML = '<span class="sub">Не удалось загрузить</span>'; });
 }
 
 // Срок хранения из техкарты в днях («7 суток» → 7) — подсказка в редакторе заготовок
