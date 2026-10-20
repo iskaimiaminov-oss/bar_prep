@@ -567,6 +567,49 @@ async function openClosing(x) {
 }
 
 
+// ===== ГЕНУБОРКА (пн–ср) =====
+function guCard() {
+  const g = me.gu; if (!g) return '';
+  return card(`<h2>🧹 Генуборка</h2><p class="sub">${g.shifts.length > 1 ? 'Твои смены: ' : 'Твоя смена: '}<b>${g.shifts.map(esc).join('; ')}</b></p>` +
+    (g.done ? `<div class="status"><span class="big">✅</span>Отмечено — спасибо!</div>`
+      : `<p class="sub">Зону уборки посмотри в сообщении в группе. Убрал(а) — нажми кнопку и загрузи фото: их получат администраторы. Отметить можно до конца среды.</p><button class="btn" id="guBtn">✅ Выполнил</button>`));
+}
+function bindGu() { const b = document.getElementById('guBtn'); if (b) b.onclick = openGuDone; }
+function openGuDone() {
+  const g = me.gu; if (!g) return;
+  closeSheet();
+  const ph = [], MAX = 5;
+  const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+  const grid = () => ph.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${p.src}" alt=""><button class="x" data-gp="${k}">×</button></div>`).join('') +
+    (ph.length < MAX ? `<label class="ph add" for="gpinput"><span><b>+</b>Фото</span></label>` : '');
+  wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>🧹 Генуборка выполнена</h2>
+    <p class="sub" style="margin-top:4px">Загрузи фото своей зоны (до ${MAX}) — их получат администраторы. Если уже выложил(а) фото в группу — просто нажми кнопку.</p>
+    <div class="photos" id="gpgrid">${grid()}</div><input type="file" id="gpinput" accept="image/*" multiple style="display:none">
+    <button class="btn" id="gpSend">✅ Выполнил</button><button class="btn soft" id="closeSheet">Отмена</button></div>`;
+  document.body.appendChild(wrap);
+  const btn = wrap.querySelector('#gpSend');
+  const sync = () => { const busy = ph.some(p => p.loading), n = ph.filter(p => p.id).length; btn.textContent = busy ? '⏳ Загружаю фото…' : n ? '✅ Выполнил · ' + n + ' фото' : '✅ Выполнил'; };
+  const redraw = () => { wrap.querySelector('#gpgrid').innerHTML = grid(); wrap.querySelectorAll('[data-gp]').forEach(b => b.onclick = () => { ph.splice(+b.dataset.gp, 1); redraw(); }); sync(); };
+  wrap.querySelector('#closeSheet').onclick = closeSheet;
+  wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+  wrap.querySelector('#gpinput').onchange = async e => {
+    const files = [...e.target.files].slice(0, MAX - ph.length); e.target.value = '';
+    for (const f of files) {
+      let x; try { x = { src: await compress(f), loading: true }; } catch (er) { toast(er.message); continue; }
+      ph.push(x); redraw();
+      post('guPhoto', { data: x.src }).then(r => { x.id = r.id; x.loading = false; }).catch(() => { toast('Фото не загрузилось'); ph.splice(ph.indexOf(x), 1); }).finally(redraw);
+    }
+  };
+  btn.onclick = async () => {
+    if (ph.some(p => p.loading)) return toast('Подожди, фото загружаются…');
+    const ids = ph.filter(p => p.id).map(p => p.id);
+    if (!ids.length && !(await confirmBox('Фото уже выложил(а) в группу?'))) return;
+    btn.disabled = true; btn.textContent = 'Отправляю…';
+    try { await call('guDone', { mon: g.mon, photos: ids }); haptic('success'); toast('Спасибо! Генуборка отмечена ✅'); closeSheet(); me = await call('me'); render(); }
+    catch (e) { toast(e.message); btn.disabled = false; sync(); }
+  };
+}
+
 // Выполнить задачу: 2–5 фото результата (заказ посуды — без фото)
 const TASK_PH_MIN = 2, TASK_PH_MAX = 5;
 function openTaskDone(t, done) {
@@ -725,8 +768,9 @@ const hmS = m => Math.floor(m / 60) % 24 + ':' + String(m % 60).padStart(2, '0')
 function homeExtraHtml(d) {
   let out = '';
   const today = me.today.date;
-  // мои смены на 7 дней
-  if (d.week && d.week.length && !me.isViewer) {
+  out += guCard();
+  // мои смены на 7 дней (у владельца бота скрыто — мешает)
+  if (d.week && d.week.length && !me.isViewer && !me.isAdmin) {
     const mySwap = date => (d.swaps || []).find(w => w.mine && w.date === date);
     out += card(`<h2>Мои смены</h2><p class="sub">Ближайшие 7 дней</p>` + d.week.map(w => {
       const dt = new Date(w.date + 'T12:00:00Z'), lbl = w.date === today ? 'сегодня' : dt.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
@@ -810,6 +854,7 @@ function bindHomeExtra() {
     });
     const pb = document.getElementById('probBtn'); if (pb) pb.onclick = () => openProblem(() => getHome(true).then(fill));
     const db = document.getElementById('dishBtn'); if (db) db.onclick = openDish;
+    bindGu();
   };
   if (homeData) fill(homeData); else box.innerHTML = card('<div class="wip">Загружаю…</div>');
   getHome(!!homeData).then(fill).catch(() => {});
@@ -991,6 +1036,7 @@ const HELP = [
   ['☀️', 'Вкладка «Сегодня»', [
     '«На смене» — кто работает в выбранный день. Дни листаются свайпом или нажатием на дату. Зелёная точка — человек сейчас на смене, пометка «закрывает» — закрывающий. Сначала идёт команда Рассвета, ниже отдельными блоками те, кто работает в другом месте: офисы Узума и Яндекса на нашей точке, Amway, кейтеринг и т.п. (по подписи под временем в графике). Касса, тачка, холодка, раннер — роль, она видна рядом с именем. Управляющие и владельцы в Рассвете не показываются — только когда у них выезд (Amway, кейтеринг и т.п.).',
     '«Мои смены» — твои смены на неделю вперёд и кнопка «Замена».',
+    '«🧹 Генуборка» — появляется с понедельника по среду, если у тебя смена в эти дни: когда твоя смена и кнопка «✅ Выполнил».',
     '«Ищут замену» — заявки коллег, которые можно взять.',
     'Дни рождения команды на неделю вперёд.',
     '«Проблемы» — что-то сломалось или закончилось? Нажми «Сообщить о проблеме», опиши и приложи до 3 фото. Администратор получит сразу.',
@@ -1040,6 +1086,10 @@ const HELP = [
     'Впиши, на кого бронь, сколько гостей, дату и время. Телефон и комментарий (стол у окна, день рождения, детский стул) — по желанию.',
     'За час до брони бот напомнит в группе и отметит тех, кто в это время на смене.',
     'Удалить бронь может тот, кто её внёс, или администратор.']],
+  ['🧹', 'Генуборка (каждую неделю пн–ср)', [
+    'В понедельник в 10:00 бот пишет в личку всем, у кого смена с понедельника по среду (и в баре, и на Узуме, и на Яндексе): когда твоя смена.',
+    'Зону уборки смотри в сообщении в группе. Убрал(а) — нажми «📷 Загрузить фото и отметить» под сообщением бота (или «✅ Выполнил» в карточке «🧹 Генуборка» во вкладке «Сегодня»), добавь до 5 фото — их получат администраторы. Если фото уже в группе — просто нажми «✅ Выполнил».',
+    'Отметить можно до конца среды. В среду в 18:00 бот напомнит тем, кто ещё не отметил. После среды кнопка не работает, а отчёт «кто убрался, кто нет» уходит администраторам.']],
   ['📝', 'Задачи и события', [
     'Задачи от администратора приходят в личку. Сделал — открой вкладку «Задачи», нажми на квадрат у задачи и приложи фото результата: минимум 2, максимум 5. Без фото задачу не отметить. Тот, кто поставил задачу, получит фото вместе с отметкой.',
     'О невыполненных задачах бот напоминает раз в 3 дня утром.',
@@ -1059,6 +1109,7 @@ const HELP = [
     '14:20 — что сварить сегодня (в группу).',
     '15:30 — что осталось вечерней смене (в группу).',
     '18:30 — напоминание вечерней смене про несваренное (в личку).',
+    'Понедельник 10:00 — генуборка: когда твоя смена (в личку); среда 18:00 — напоминание, если не отметил(а).',
     '20:00 — «Завтра у тебя смена» (в личку).',
     '21:30 или 22:30 — «Пора закрываться» (в группу); через 30 минут — ещё раз, если остатки не внесены.',
     'За час до брони или события — напоминание.']],
@@ -1339,12 +1390,13 @@ const views = {
     if (!me.preps.length) return empty('🫙', 'Заготовок пока нет', 'Администратор ещё не добавил список.');
     const when = o.date ? new Date(o.date + 'T12:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
     const has = Object.keys(o.items).length;
+    const guTop = guCard();
     const rows = me.preps.map(p => {
       const v = orderDraft[p.id] != null ? orderDraft[p.id] : (o.items[p.id] != null ? String(o.items[p.id]) : '');
       return `<div class="prow"><div class="pname"><b>${esc(p.name)}</b></div>
         <label class="field"><input inputmode="decimal" enterkeyhint="next" data-oid="${esc(p.id)}" value="${esc(v)}" placeholder="0"><small>${esc(p.unit)}</small></label></div>`;
     }).join('');
-    return card(`<h2>Заказ заготовок</h2><p class="sub">Впиши, сколько нужно. Заказ уйдёт в группу бара <b>${esc(when)} в 08:00</b>.${has ? ' Заказ уже сохранён — можно изменить до отправки.' : ''}</p>${rows}`) +
+    return guTop + card(`<h2>Заказ заготовок</h2><p class="sub">Впиши, сколько нужно. Заказ уйдёт в группу бара <b>${esc(when)} в 08:00</b>.${has ? ' Заказ уже сохранён — можно изменить до отправки.' : ''}</p>${rows}`) +
       `<div class="dock"><button class="btn" id="sendOrder">${has ? 'Обновить заказ' : 'Отправить заказ'}</button></div>`;
   },
 
@@ -1749,6 +1801,7 @@ const binds = {
     };
   },
   order() {
+    bindGu();
     document.querySelectorAll('[data-oid]').forEach(i => i.oninput = () => { orderDraft[i.dataset.oid] = i.value; });
     const btn = document.getElementById('sendOrder'); if (!btn) return;
     btn.onclick = async () => {
