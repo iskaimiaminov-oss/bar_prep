@@ -566,6 +566,68 @@ async function openClosing(x) {
   });
 }
 
+
+// Выполнить задачу: 2–5 фото результата (заказ посуды — без фото)
+const TASK_PH_MIN = 2, TASK_PH_MAX = 5;
+function openTaskDone(t, done) {
+  closeSheet();
+  const ph = [];
+  const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+  const grid = () => ph.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${p.src}" alt=""><button class="x" data-tp="${k}">×</button></div>`).join('') +
+    (ph.length < TASK_PH_MAX ? `<label class="ph add" for="tpinput"><span><b>+</b>Фото</span></label>` : '');
+  wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>✅ Задача выполнена</h2>
+    <p class="sub" style="margin-top:4px">${esc(t.text)}</p>
+    <p class="sub">Приложи фото результата — <b>минимум ${TASK_PH_MIN}</b>, до ${TASK_PH_MAX}. ${esc(t.byName)} увидит их вместе с отметкой</p>
+    <div class="photos" id="tpgrid">${grid()}</div><input type="file" id="tpinput" accept="image/*" multiple style="display:none">
+    <button class="btn" id="tpSend">Отметить выполненной</button><button class="btn soft" id="closeSheet">Отмена</button></div>`;
+  document.body.appendChild(wrap);
+  const btn = wrap.querySelector('#tpSend');
+  const sync = () => {
+    const ok = ph.filter(p => p.id).length, busy = ph.some(p => p.loading);
+    btn.classList.toggle('locked', ok < TASK_PH_MIN || busy);
+    btn.textContent = busy ? '⏳ Загружаю фото…' : ok < TASK_PH_MIN ? '🔒 Добавь ещё ' + (TASK_PH_MIN - ok) + ' фото' : 'Отметить выполненной';
+  };
+  const redraw = () => { wrap.querySelector('#tpgrid').innerHTML = grid(); wrap.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { ph.splice(+b.dataset.tp, 1); redraw(); }); sync(); };
+  wrap.querySelector('#closeSheet').onclick = closeSheet;
+  wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+  wrap.querySelector('#tpinput').onchange = async e => {
+    const files = [...e.target.files].slice(0, TASK_PH_MAX - ph.length); e.target.value = '';
+    for (const f of files) {
+      let x; try { x = { src: await compress(f), loading: true }; } catch (er) { toast(er.message); continue; }
+      ph.push(x); redraw();
+      post('taskPhoto', { data: x.src }).then(r => { x.id = r.id; x.loading = false; }).catch(() => { toast('Фото не загрузилось'); ph.splice(ph.indexOf(x), 1); }).finally(redraw);
+    }
+  };
+  btn.onclick = async () => {
+    if (ph.some(p => p.loading)) return toast('Подожди, фото загружаются…');
+    const ids = ph.filter(p => p.id).map(p => p.id);
+    if (ids.length < TASK_PH_MIN) return toast('Приложи минимум ' + TASK_PH_MIN + ' фото');
+    btn.disabled = true; btn.textContent = 'Отправляю…';
+    try { await call('taskDone', { id: t.id, photos: ids }); haptic('success'); toast('Молодец! ✅'); closeSheet(); done && done(); }
+    catch (e) { toast(e.message); btn.disabled = false; sync(); }
+  };
+  sync();
+}
+// Фото, которые приложили к выполненной задаче (видит тот, кто поставил, и админ)
+function openTaskPhotos(t) {
+  closeSheet();
+  const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+  wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>📷 Фото к задаче</h2><p class="sub" style="margin-top:4px">${esc(t.text)}</p>` +
+    t.photos.map(g => `<h3>${esc(g.name)}</h3><div class="photos">${g.ids.map(id => `<div class="ph loading" data-pid="${esc(id)}"><img alt=""></div>`).join('')}</div>`).join('') +
+    `<button class="btn soft" id="closeSheet">Закрыть</button></div>`;
+  wrap.querySelector('#closeSheet').onclick = closeSheet;
+  wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+  document.body.appendChild(wrap);
+  wrap.querySelectorAll('[data-pid]').forEach(async el => {
+    const id = el.dataset.pid, img = el.querySelector('img');
+    try {
+      photoCache[id] = photoCache[id] || call('photo', { id }).then(r => r.data);
+      img.src = await photoCache[id]; el.classList.remove('loading');
+      img.onclick = () => lightbox(img.src);
+    } catch (e) { delete photoCache[id]; el.classList.remove('loading'); el.innerHTML = '<span class="sub" style="font-size:12px">не загрузилось</span>'; }
+  });
+}
+
 async function openTkForPrep(pid, amount) {
   const p = me.preps.find(x => x.id === pid);
   if (!p || !p.tk) return toast('Для этой заготовки техкарта не привязана');
@@ -946,7 +1008,7 @@ const HELP = [
     'Вкладка «Закрытие» доступна тем, кто закрывает смену по графику (смена до 22:00 и позже).',
     'Напоминание «Пора закрываться» приходит в 21:30 с понедельника по четверг и в 22:30 с пятницы по воскресенье.',
     'Чтобы закрыть смену, нужно: отметить все пункты чек-листа, добавить минимум 3 фото (бар, витрина, мойка), вписать остатки всех заготовок и заполнить блок «Касса и конверт».',
-    '«Касса и конверт»: выручка за день всего (карта, Узум, наличные — всё вместе), наличные по отчёту iiko, сколько наличных в кассе по факту (пересчитай) и сколько денег в конверте (пересчитай).',
+    '«Касса и конверт»: наличные по отчёту iiko, сколько наличных в кассе по факту (пересчитай) и сколько денег в конверте (пересчитай).',
     'Перед закрытием проверь, что все расходы из кассы и перекладывания в конверт записаны во вкладке «Наличные» — иначе бот покажет недостачу.',
     'Пока чего-то не хватает, на кнопке написано, чего именно. Когда всё готово — нажми «Закрыть смену».',
     'Всё сохраняется по ходу: если закрыл приложение, продолжишь с того же места.',
@@ -979,7 +1041,7 @@ const HELP = [
     'За час до брони бот напомнит в группе и отметит тех, кто в это время на смене.',
     'Удалить бронь может тот, кто её внёс, или администратор.']],
   ['📝', 'Задачи и события', [
-    'Задачи от администратора приходят в личку. Сделал — нажми «Выполнено» прямо в сообщении или во вкладке «Задачи».',
+    'Задачи от администратора приходят в личку. Сделал — открой вкладку «Задачи», нажми на квадрат у задачи и приложи фото результата: минимум 2, максимум 5. Без фото задачу не отметить. Тот, кто поставил задачу, получит фото вместе с отметкой.',
     'О невыполненных задачах бот напоминает раз в 3 дня утром.',
     'События (собрания, встречи) приходят приглашением в личку, а за час до начала — напоминание.']],
   ['📖', 'Техкарты', [
@@ -1159,8 +1221,7 @@ const views = {
       <input type="file" id="phinput" accept="image/*" multiple style="display:none">`);
     const cv = k => esc(draft['$' + k] != null ? draft['$' + k] : '');
     const cashHtml = card(`<h2>💵 Касса и конверт</h2><p class="sub">Без этого смену не закрыть. Суммы в сумах, можно писать «4 500 000» или «4500к»</p>
-      <div class="form"><label>Выручка за день — всего (карта, Узум, наличные…)</label><input data-cash="rev" inputmode="text" enterkeyhint="next" placeholder="Например: 4 500 000" value="${cv('rev')}">
-      <label>Наличные по отчёту iiko</label><input data-cash="ik" inputmode="text" enterkeyhint="next" placeholder="Сумма из распечатки iiko" value="${cv('ik')}">
+      <div class="form"><label>Наличные по отчёту iiko</label><input data-cash="ik" inputmode="text" enterkeyhint="next" placeholder="Сумма из распечатки iiko" value="${cv('ik')}">
       <label>💵 Пересчитай кассу — сколько наличных по факту</label><input data-cash="cf" inputmode="text" enterkeyhint="next" placeholder="Например: 1 150 000" value="${cv('cf')}">
       <label>✉️ Пересчитай конверт — сколько в нём сейчас</label><input data-cash="env" inputmode="text" enterkeyhint="done" placeholder="Например: 2 350 000" value="${cv('env')}"></div>
       <p class="sub" id="cashHint" style="margin-top:10px"></p>`);
@@ -1221,7 +1282,7 @@ const views = {
     const open = d.mine.filter(t => !t.doneMe), done = d.mine.filter(t => t.doneMe);
     const row = t => `<div class="task ${t.doneMe ? 'done' : ''}"><div class="box" ${t.doneMe ? '' : `data-tdone="${esc(t.id)}"`}>✓</div>
       <div class="pname"><b>${esc(t.text)}</b><span>от ${esc(t.byName)}${t.due ? ' · срок: ' + esc(t.due) : ''}</span></div></div>`;
-    let out = card(`<h2>Мои задачи</h2><p class="sub">${open.length ? 'Нажми на квадрат, когда сделаешь' : 'Все задачи выполнены 🎉'}</p>` +
+    let out = card(`<h2>Мои задачи</h2><p class="sub">${open.length ? 'Сделал — нажми на квадрат и приложи 2–5 фото результата' : 'Все задачи выполнены 🎉'}</p>` +
       (open.length ? open.map(row).join('') : '') + (done.length ? `<h3>Выполнено</h3>` + done.slice(0, 10).map(row).join('') : ''));
     if (d.canCreate) {
       out += card(`<h2>Поставить задачу</h2><div class="form">
@@ -1230,7 +1291,7 @@ const views = {
         <label>Кому</label>${audiencePicker(taskForm, d, 't')}
         <button class="btn" id="tAdd">Поставить задачу</button></div>`);
       if (d.created.length) out += card(`<h2>Поставленные</h2>` + d.created.map(t => `<div class="task"><div class="pname"><b>${esc(t.text)}</b>
-        <span>${esc(t.to)} · готово ${t.doneCnt}/${t.total}${t.leftNames.length && t.leftNames.length <= 6 ? ' · ждём: ' + esc(t.leftNames.join(', ')) : ''}</span></div>
+        <span>${esc(t.to)} · готово ${t.doneCnt}/${t.total}${t.leftNames.length && t.leftNames.length <= 6 ? ' · ждём: ' + esc(t.leftNames.join(', ')) : ''}</span></div>${(t.photos || []).length ? `<button class="tkbtn" data-tph="${esc(t.id)}">📷 ${t.photos.reduce((a, g) => a + g.ids.length, 0)}</button>` : ''}
         <button class="x" data-tdel="${esc(t.id)}">×</button></div>`).join(''));
     }
     return out;
@@ -1495,7 +1556,7 @@ const binds = {
       const values = {}; let emptyN = 0, bad = 0;
       inputs.forEach(i => { const v = toNum(i.value); if (v === '') emptyN++; else if (isNaN(v) || v < 0) bad++; else values[i.dataset.id] = v; });
       if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
-      const cash = { rev: cashVal('rev'), ik: cashVal('ik'), cf: cashVal('cf'), env: cashVal('env') };
+      const cash = { ik: cashVal('ik'), cf: cashVal('cf'), env: cashVal('env') };
       if (photos.some(p => p.loading)) { toast('Подожди, фото ещё загружаются…'); return; }
       const m = missing();
       let force = false;
@@ -1703,7 +1764,10 @@ const binds = {
   tasks() {
     restoreForm('t');
     bindAudience(taskForm, 't');
+    document.querySelectorAll('[data-tph]').forEach(b => b.onclick = () => { const t = taskData.created.find(x => x.id === b.dataset.tph); if (t) openTaskPhotos(t); });
     document.querySelectorAll('[data-tdone]').forEach(b => b.onclick = async () => {
+      const t = taskData.mine.find(x => x.id === b.dataset.tdone);
+      if (t && t.needPhoto) return openTaskDone(t, () => { taskData = null; me.openTasks = Math.max(0, (me.openTasks || 1) - 1); render(); });
       if (!(await confirmBox('Отметить задачу выполненной? Тот, кто поставил, получит уведомление.'))) return;
       try { await call('taskDone', { id: b.dataset.tdone }); haptic('success'); toast('Молодец! ✅'); taskData = null; me.openTasks = Math.max(0, (me.openTasks || 1) - 1); render(); } catch (e) { toast(e.message); }
     });
