@@ -1118,7 +1118,7 @@ function cashHtml() {
     out.push(card(`<h2>✉️ Конверт</h2>` + (e.known
       ? `<div style="font-size:30px;font-weight:700;margin:6px 0 0;white-space:nowrap">${esc(money(e.exp))}</div><p class="sub" style="margin:0">должно быть в конверте сейчас</p><p class="sub" style="margin:8px 0 0">Пересчёт ${esc(dmy(e.baseDate))} (${esc(e.baseBy)}): ${esc(money(e.base))} · + внесения ${esc(money(e.ins))} · − расходы ${esc(money(e.exps))}</p>`
       : `<p class="sub">Пересчёта ещё не было — первый будет на закрытии смены, с него бот начнёт считать остаток.</p>`) +
-      `<p class="sub" style="margin:8px 0 0">Это видят только админы — сотрудники пересчитывают конверт «вслепую».</p>`));
+      `<p class="sub" style="margin:8px 0 0">Это видят только управляющие и владельцы — остальные пересчитывают конверт «вслепую».</p>`));
   }
   const lbl = ['Сегодня', 'Вчера', 'Позавчера'];
   d.days.forEach((day, i) => {
