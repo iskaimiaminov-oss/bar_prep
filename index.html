@@ -1645,10 +1645,10 @@ const views = {
     // админ: новый сбор
     const t = d.today, dow = new Date(t + 'T12:00:00Z').getUTCDay() || 7, mon = addD(t, 8 - dow);
     const f = grForm.from || mon, to = grForm.to || addD(mon, 6), dl = grForm.deadline || (addD(f, -3) > t ? addD(f, -3) : t);
-    out += `<details class="card" ${r ? '' : 'open'}><summary><div class="pname"><h2>＋ Новый сбор выходных</h2><p class="sub">Бот попросит команду отметить желаемые выходные</p></div></summary><div class="form">
+    out += `<details class="card" ${r ? '' : 'open'}><summary><div class="pname"><h2>＋ Новый сбор выходных</h2><p class="sub">Вручную, на любые дни</p></div></summary><div class="form">
       <div class="two"><label>С<input id="grFrom" type="date" value="${f}"></label><label>По<input id="grTo" type="date" value="${to}"></label></div>
       <label>Ответить до (включительно)<input id="grDl" type="date" min="${t}" value="${dl}"></label>
-      <p class="sub">Период — в пределах одного месяца. Что уже стоит в листе месяца (ВЫХ, отпуск, выезд, время) — бот оставит как есть. Новый сбор стирает ответы прошлого</p>
+      <p class="sub">Обычно не нужно: каждую пятницу в 12:00 бот сам открывает сбор на следующую неделю (до субботы 18:00) и потом сам составляет график. Здесь — если нужен сбор на другие дни. Что уже стоит в листе месяца (ВЫХ, отпуск, выезд, время) — бот оставит как есть. Новый сбор стирает ответы прошлого</p>
       <button class="btn" id="grStart">Разослать команде</button>
       <button class="btn soft" id="grGenNow">Составить график без сбора</button></div></details>`;
     return out;
