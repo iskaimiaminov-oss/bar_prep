@@ -290,6 +290,8 @@
   .chip{border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:8px 14px;font-size:15px;cursor:pointer;transition:.15s}
   .chip.on{background:var(--forest);border-color:var(--forest);color:var(--cream)}
   .chip.on::before{content:"✓ "}
+  .grchips .chip.on::before{content:none}
+  .grlist{margin:6px 0 0;padding-left:18px;font-size:14px;line-height:1.45}
   .badge{display:inline-block;background:var(--olive-soft);border-radius:999px;padding:4px 10px;font-size:14px;margin:3px 4px 3px 0}
   textarea{width:100%;border:1.5px solid transparent;background:var(--cream);border-radius:12px;padding:10px 12px;outline:none;resize:vertical}
   textarea:focus{border-color:var(--olive);background:var(--focus)}
@@ -338,6 +340,7 @@ let extraOpen = null;   // блок «Сварил что-то ещё» откр
 let fzv = {};           // сколько из сваренного ушло в морозилку (pid → текст)
 let fridgeData = null, bkData = null, cardData = null, cardName = null, bkOpen = false;
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
+let grD = null, grSel = null, grForm = {};   // вкладка «График»
 let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
 async function call(action, payload) {
@@ -404,6 +407,7 @@ function tabsList() {
   if (me.orderer && !me.isAdmin) return [['order', 'Заказ']];
   const tasksLbl = 'Задачи' + (me.openTasks ? `<span class="tabcount">${me.openTasks}</span>` : '');
   const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['tk', 'Техкарты']];
+  if (me.isAdmin && !me.isOwner) t.splice(5, 0, ['grafik', 'График']);   // пока только админу (владельцам — никогда)
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
   else if (me.isViewer) t.push(['history', 'История']);   // админ-наблюдатель: всё как у сотрудника + история закрытий
   return t;
@@ -1578,6 +1582,57 @@ const views = {
       card(`<h2>Проверка графика</h2><p class="sub">Кого бот отметит сегодня. Поменял график — нажми «Обновить график» на вкладке «Сегодня»</p>${whoHtml}<button class="btn soft" id="who">Проверить сегодня</button>`);
   },
 
+  async grafik() {
+    grD = grD || await call('grafik');
+    const d = grD, r = d.req;
+    const dayS = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+    const dmS = s => s.slice(8, 10) + '.' + s.slice(5, 7);
+    const range = (a, b) => { const out = []; for (let x = a; x <= b && out.length < 40; x = addD(x, 1)) out.push(x); return out; };
+    let out = '';
+    // сотрудник: отметить желаемые выходные
+    if (r && r.open && (d.inList || !d.isAdmin)) {
+      if (!grSel) grSel = new Set((d.mine && d.mine.d) || []);
+      const chips = range(r.from, r.to).map(x => `<button class="chip ${grSel.has(x) ? 'on' : ''}" data-grday="${x}">${grSel.has(x) ? '🌴 ' : ''}${esc(dayS(x))}</button>`).join('');
+      out += card(`<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(r.from)}–${dmS(r.to)}. Отметь дни, когда хочешь отдыхать, до <b>${dmS(r.deadline)}</b> включительно — бот постарается учесть</p>
+        <div class="chips grchips">${chips}</div>
+        <div class="form"><label>Комментарий (необязательно)<textarea id="grNote" rows="2" maxlength="300" placeholder="Например: хочу 4/3 на этой неделе">${esc((d.mine && d.mine.note) || '')}</textarea></label></div>
+        <button class="btn" id="grSave">${d.mine && d.mine.done ? 'Сохранить изменения' : 'Сохранить'}</button>
+        ${d.mine && d.mine.done ? `<p class="sub" style="margin-top:10px">✅ Записано: ${d.mine.d.length ? d.mine.d.map(dmS).join(', ') : 'без пожеланий'}</p>` : ''}`);
+    } else if (r && !r.open && !d.isAdmin) out += empty('🗓', 'Сбор выходных закончен', `Пожелания на ${dmS(r.from)}–${dmS(r.to)} собраны — скоро будет график`);
+    else if (!d.isAdmin) out += empty('🗓', 'Сейчас сбор выходных не идёт', 'Когда админ начнёт составлять график, бот пришлёт сообщение — отметишь дни здесь или кнопками в чате');
+    if (!d.isAdmin) return out;
+    // админ: черновик
+    const dr = d.draft;
+    if (d.job) out += card(`<h2>⏳ Составляю черновик…</h2><p class="sub">Это займёт пару минут. Готовый черновик пришлю в бот</p><button class="btn soft" id="grReload">🔄 Обновить</button>`);
+    else if (dr) {
+      const st = { new: 'ждёт решения', approved: '✅ утверждён — перенесён в лист «' + dr.month + '»', manual: '✍️ оставлен — правишь сам' }[dr.status] || dr.status;
+      out += card(`<h2>🧩 Черновик ${dmS(dr.from)}–${dmS(dr.to)}</h2><p class="sub">Лист «${esc(dr.sheet)}» · ${esc(st)}</p>
+        ${dr.wishes ? `<p class="sub">🌴 Желаемые выходные: учтено ${dr.wishOk} из ${dr.wishes}</p>` : ''}
+        ${dr.notes.length ? `<p class="sub">${dr.notes.map(x => '🕖 ' + esc(x)).join('<br>')}</p>` : ''}
+        ${dr.issues.length ? `<h3>⚠️ Не сходится с правилами (${dr.issues.length})</h3><ul class="grlist">${dr.issues.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="sub">✅ Все правила соблюдены</p>'}
+        <button class="btn soft" id="grOpen" data-url="${esc(dr.url)}">📄 Открыть черновик</button>
+        ${dr.status === 'new' ? `<div class="two"><button class="btn" id="grApprove">✅ Утвердить</button><button class="btn soft" id="grManual">✍️ Поправлю сам</button></div>` : ''}`);
+    }
+    // админ: ответы
+    if (r) {
+      const ans = (d.answers || []).map(w => `<div class="prow"><div class="pname"><b>${esc(w.name)}</b><span>${w.d.length ? '🌴 ' + w.d.map(dmS).join(', ') : 'без пожеланий'}${w.note ? ' · «' + esc(w.note) + '»' : ''}</span></div></div>`).join('');
+      out += card(`<h2>Ответы · ${dmS(r.from)}–${dmS(r.to)}</h2><p class="sub">${r.open ? 'Сбор идёт до ' + dmS(r.deadline) + ' включительно. Потом бот сам пришлёт итог и кнопку «Составить черновик»' : 'Сбор закончен'}</p>
+        ${ans || '<p class="sub">Пока никто не ответил</p>'}
+        ${(d.wait || []).length ? `<p class="sub" style="margin-top:10px">Не ответили: ${esc(d.wait.join(', '))}</p>` : ''}
+        ${r.open ? '<button class="btn soft" id="grStop">Закончить сбор сейчас</button>' : ''}
+        <button class="btn" id="grGen" ${d.job ? 'disabled' : ''}>🧩 Составить черновик на ${dmS(r.from)}–${dmS(r.to)}</button>`);
+    }
+    // админ: новый сбор
+    const t = d.today, dow = new Date(t + 'T12:00:00Z').getUTCDay() || 7, mon = addD(t, 8 - dow);
+    const f = grForm.from || mon, to = grForm.to || addD(mon, 6), dl = grForm.deadline || (addD(f, -3) > t ? addD(f, -3) : t);
+    out += `<details class="card" ${r ? '' : 'open'}><summary><div class="pname"><h2>＋ Новый сбор выходных</h2><p class="sub">Бот попросит команду отметить желаемые выходные</p></div></summary><div class="form">
+      <div class="two"><label>С<input id="grFrom" type="date" value="${f}"></label><label>По<input id="grTo" type="date" value="${to}"></label></div>
+      <label>Ответить до (включительно)<input id="grDl" type="date" min="${t}" value="${dl}"></label>
+      <p class="sub">Период — в пределах одного месяца. Что уже стоит в листе месяца (ВЫХ, отпуск, выезд, время) — бот оставит как есть. Новый сбор стирает ответы прошлого</p>
+      <button class="btn" id="grStart">Разослать команде</button>
+      <button class="btn soft" id="grGenNow">Составить черновик без сбора</button></div></details>`;
+    return out;
+  },
   async history() {
     if (!hist) hist = (await call('history')).items;
     const rep = me.isAdmin ? card(`<h2>🏆 Итоги 2 недель</h2><p class="sub">Рейтинг, кто сколько заготовок сварил. Приходит в группу сам раз в 2 недели в понедельник в 12:00</p><button class="btn soft" id="reportNow">Отправить итоги сейчас</button><button class="btn soft" id="weekNow" style="margin-top:8px">📊 Сводка недели мне в личку</button><button class="btn soft" id="briefNow" style="margin-top:8px">☀️ Утренний брифинг мне в личку</button>`) : '';
@@ -1934,6 +1989,40 @@ const binds = {
         Object.keys(formKeep).filter(k => k[0] === 'e').forEach(k => delete formKeep[k]); evData = null; render(); }
       catch (e) { toast(e.message); add.disabled = false; add.textContent = 'Создать и уведомить'; }
     };
+  },
+  grafik() {
+    const act = async (btn, action, payload, ok) => {
+      if (btn) btn.disabled = true;
+      try { const r = await call(action, payload); grD = r; grSel = null; if (r.msg) toast(r.msg); else if (ok) toast(ok); haptic('success'); render(); return r; }
+      catch (e) { toast(e.message); if (btn) btn.disabled = false; }
+    };
+    document.querySelectorAll('[data-grday]').forEach(b => b.onclick = () => {
+      const x = b.dataset.grday; if (grSel.has(x)) grSel.delete(x); else grSel.add(x);
+      b.classList.toggle('on', grSel.has(x)); b.textContent = (grSel.has(x) ? '🌴 ' : '') + b.textContent.replace(/^🌴 /, '');
+      try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
+    });
+    const sv = document.getElementById('grSave');
+    if (sv) sv.onclick = () => act(sv, 'grWish', { d: Array.from(grSel), note: document.getElementById('grNote').value.trim() }, 'Записал 🌴 Спасибо!');
+    const rl = document.getElementById('grReload'); if (rl) rl.onclick = () => { grD = null; render(); };
+    const op = document.getElementById('grOpen'); if (op) op.onclick = () => { try { tg.openLink(op.dataset.url); } catch (e) { window.open(op.dataset.url, '_blank'); } };
+    const ap = document.getElementById('grApprove');
+    if (ap) ap.onclick = async () => {
+      if (!(await confirmBox('Перенести смены из черновика в лист месяца?'))) return;
+      const r = await act(ap, 'grApprove', {});
+      if (r && r.conflict && (await confirmBox('После черновика в листе месяца поменяли смены этого периода. Перенести черновик поверх? Ручные правки в этих днях пропадут'))) act(null, 'grApprove', { force: true });
+    };
+    const mn = document.getElementById('grManual'); if (mn) mn.onclick = () => act(mn, 'grManual', {});
+    const stp = document.getElementById('grStop');
+    if (stp) stp.onclick = async () => { if (await confirmBox('Закончить сбор? Бот пришлёт тебе итог')) act(stp, 'grStop', {}, 'Сбор закончен'); };
+    const gen = document.getElementById('grGen'); if (gen) gen.onclick = () => act(gen, 'grGen', {}, 'Составляю — пришлю в бот через пару минут ⏳');
+    const v = id => (document.getElementById(id) || {}).value || '';
+    ['grFrom', 'grTo', 'grDl'].forEach((id, i) => { const el = document.getElementById(id); if (el) el.onchange = () => { grForm[['from', 'to', 'deadline'][i]] = el.value; }; });
+    const st = document.getElementById('grStart');
+    if (st) st.onclick = async () => {
+      if (!(await confirmBox('Разослать команде просьбу отметить желаемые выходные?'))) return;
+      act(st, 'grStart', { from: v('grFrom'), to: v('grTo'), deadline: v('grDl') }, 'Разослал команде 📨');
+    };
+    const gn = document.getElementById('grGenNow'); if (gn) gn.onclick = () => act(gn, 'grGen', { from: v('grFrom'), to: v('grTo') }, 'Составляю — пришлю в бот через пару минут ⏳');
   },
   history() {
     const bb = document.getElementById('briefNow');
