@@ -419,7 +419,7 @@ function tabsList() {
   if (me.orderer && !me.isAdmin) return [['order', 'Заказ']];
   const tasksLbl = 'Задачи' + (me.openTasks ? `<span class="tabcount">${me.openTasks}</span>` : '');
   const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['tk', 'Техкарты']];
-  if (me.isAdmin || (!me.isOwner && (me.statuses || {})[me.name] !== 'управляющий')) t.splice(5, 0, ['grafik', 'График']);   // владельцам и управляющим не нужна
+  if (me.isAdmin || (me.grTab && !me.isOwner && (me.statuses || {})[me.name] !== 'управляющий')) t.splice(5, 0, ['grafik', 'График']);   // владельцам и управляющим не нужна
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
   else if (me.isViewer) t.push(['history', 'История']);   // админ-наблюдатель: всё как у сотрудника + история закрытий
   return t;
