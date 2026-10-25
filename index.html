@@ -292,6 +292,15 @@
   .chip.on::before{content:"✓ "}
   .grchips .chip.on::before{content:none}
   .grchips .chip.busy{opacity:.6;border-style:dashed}
+  .grlist2{margin-top:6px}
+  .grrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .grrow:last-child{border-bottom:0}
+  .grday{flex:1;min-width:0}
+  .grday b{display:block;font-size:16px;text-transform:capitalize}
+  .grday span{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+  .grbtn{flex:0 0 auto;border:1.5px solid var(--line);background:var(--card);color:inherit;border-radius:999px;padding:9px 14px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .grbtn.on{background:var(--forest);border-color:var(--forest);color:var(--cream)}
+  .grbtn.busy{opacity:.6;border-style:dashed}
   .grleft{color:var(--muted);font-size:12px}
   .grchips .chip.on .grleft{color:inherit}
   .grlist{margin:6px 0 0;padding-left:18px;font-size:14px;line-height:1.45}
@@ -343,7 +352,7 @@ let extraOpen = null;   // блок «Сварил что-то ещё» откр
 let fzv = {};           // сколько из сваренного ушло в морозилку (pid → текст)
 let fridgeData = null, bkData = null, cardData = null, cardName = null, bkOpen = false;
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
-let grD = null, grSel = null, grForm = {}, grZ = null;   // вкладка «График»; grZ — день, на который пишем заявление
+let grD = null, grSel = null, grForm = {}, grZ = null, grPrev = null;   // grPrev — предпросмотр для админа   // вкладка «График»; grZ — день, на который пишем заявление
 let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
 async function call(action, payload) {
@@ -1600,27 +1609,38 @@ const views = {
     const range = (a, b) => { const out = []; for (let x = a; x <= b && out.length < 40; x = addD(x, 1)) out.push(x); return out; };
     let out = '';
     // сотрудник: отметить желаемые выходные
-    if (r && r.open && (d.inList || !d.isAdmin)) {
-      if (!grSel) grSel = new Set((d.mine && d.mine.d) || []);
-      // 🌴 мой выходной · 🔒 день занят (можно заявление) · ⏳ заявление ждёт · ✅ заявление одобрено · «ещё N» — сколько мест
-      const info = x => (d.days || []).find(y => y.date === x) || { free: true, left: null, z: '' };
-      const chips = range(r.from, r.to).map(x => {
-        const i = info(x), mine = grSel.has(x);
-        if (!mine && (i.z === 'ok' || i.z === 'wait')) return `<button class="chip ${i.z === 'ok' ? 'on' : 'busy'}" data-grz-st="${i.z}">${i.z === 'ok' ? '✅ ' : '⏳ '}${esc(dayS(x))}</button>`;
-        if (!mine && !i.free) return `<button class="chip busy" data-grbusy="${x}">🔒 ${esc(dayS(x))}</button>`;
-        return `<button class="chip ${mine ? 'on' : ''}" data-grday="${x}">${mine ? '🌴 ' : ''}${esc(dayS(x))}${!mine && i.left != null ? `<small class="grleft"> · ещё ${i.left}</small>` : ''}</button>`;
+    const pv = d.isAdmin && grPrev;   // админ смотрит, как видят сотрудники
+    if (pv || (r && r.open && (d.inList || !d.isAdmin))) {
+      const rr = pv ? grPrev : r, mineD = pv ? null : d.mine, days = pv ? grPrev.days : d.days;
+      if (!grSel) grSel = new Set((mineD && mineD.d) || []);
+      // список дней: день недели и число, сколько ещё можно взять выходных, кнопка «Выходной»
+      // 🌴 мой выходной · 🔒 мест нет (можно заявление) · ⏳ заявление ждёт · ✅ заявление одобрено
+      const info = x => (days || []).find(y => y.date === x) || { free: true, left: null, z: '' };
+      const wdL = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'long', timeZone: 'UTC' });
+      const dnL = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+      const places = n => n + ' ' + (n % 10 === 1 && n % 100 !== 11 ? 'место' : [2, 3, 4].indexOf(n % 10) >= 0 && (n % 100 < 12 || n % 100 > 14) ? 'места' : 'мест');
+      const chips = range(rr.from, rr.to).map(x => {
+        const i = info(x), mine = grSel.has(x), left = i.left == null ? null : Math.max(0, i.left - (mine ? 1 : 0));
+        let btn;
+        if (!mine && (i.z === 'ok' || i.z === 'wait')) btn = `<button class="grbtn ${i.z === 'ok' ? 'on' : 'busy'}" data-grz-st="${i.z}">${i.z === 'ok' ? '✅ Одобрено' : '⏳ Заявление'}</button>`;
+        else if (!mine && !i.free) btn = `<button class="grbtn busy" data-grbusy="${x}">🔒 Занято</button>`;
+        else btn = `<button class="grbtn ${mine ? 'on' : ''}" data-grday="${x}">${mine ? '🌴 Выходной' : 'Выходной'}</button>`;
+        const sub = left == null ? '' : !mine && !i.free ? 'мест нет — можно заявление' : left ? 'ещё можно: ' + places(left) : 'мест больше нет';
+        return `<div class="grrow${mine ? ' on' : ''}"><div class="grday"><b>${esc(wdL(x))}</b><span>${esc(dnL(x))}${sub ? ' · ' + sub : ''}</span></div>${btn}</div>`;
       }).join('');
       const zForm = grZ ? card(`<h2>📝 Заявление на выходной</h2><p class="sub">${esc(dayS(grZ))} уже занят — в один день могут отдыхать не все, иначе некому работать. Если очень нужно — напиши причину, админ решит и бот пришлёт ответ</p>
         <div class="form"><textarea id="grZr" rows="3" maxlength="300" placeholder="Например: запись к врачу, экзамен"></textarea></div>
         <div class="two"><button class="btn" id="grZSend">Отправить админу</button><button class="btn soft" id="grZNo">Отмена</button></div>`) : '';
-      out += card(`<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(r.from)}–${dmS(r.to)}. Отметь дни, когда хочешь отдыхать, до <b>${esc(r.dlText)}</b> — бот постарается учесть. 🔒 — день уже занят, но можно подать заявление</p>
-        <div class="chips grchips">${chips}</div>
-        <div class="form"><label>Комментарий (необязательно)<textarea id="grNote" rows="2" maxlength="300" placeholder="Например: хочу 4/3 на этой неделе">${esc(grForm.note != null ? grForm.note : (d.mine && d.mine.note) || '')}</textarea></label></div>
-        <button class="btn" id="grSave">${d.mine && d.mine.done ? 'Сохранить изменения' : 'Сохранить'}</button>
-        ${d.mine && d.mine.done ? `<p class="sub" style="margin-top:10px">✅ Записано: ${d.mine.d.length ? d.mine.d.map(dmS).join(', ') : 'без пожеланий'}</p>` : ''}`) + zForm;
+      out += card(`${pv ? '<p class="sub" style="margin:0 0 8px;color:var(--warm)">👀 Предпросмотр — так увидят сотрудники. Нажимать можно, но ничего не сохранится</p>' : ''}<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(rr.from)}–${dmS(rr.to)}. Отметь дни, когда хочешь отдыхать, до <b>${esc(rr.dlText)}</b> — бот постарается учесть. В один день могут отдыхать не все: если мест нет (🔒), можно подать заявление</p>
+        <div class="grlist2">${chips}</div>
+        <div class="form"><label>Комментарий (необязательно)<textarea id="grNote" rows="2" maxlength="300" placeholder="Например: хочу 4/3 на этой неделе">${esc(grForm.note != null ? grForm.note : (mineD && mineD.note) || '')}</textarea></label></div>
+        <button class="btn" id="${pv ? 'grPrevSave' : 'grSave'}">${mineD && mineD.done ? 'Сохранить изменения' : 'Сохранить'}</button>
+        ${pv ? '<button class="btn soft" id="grPrevOff">Закрыть предпросмотр</button>' : ''}
+        ${mineD && mineD.done ? `<p class="sub" style="margin-top:10px">✅ Записано: ${mineD.d.length ? mineD.d.map(dmS).join(', ') : 'без пожеланий'}</p>` : ''}`) + zForm;
     } else if (r && !r.open && !d.isAdmin) out += empty('🗓', 'Сбор выходных закончен', `Пожелания на ${dmS(r.from)}–${dmS(r.to)} собраны — скоро будет график`);
     else if (!d.isAdmin) out += empty('🗓', 'Сейчас сбор выходных не идёт', 'Когда админ начнёт составлять график, бот пришлёт сообщение — отметишь дни здесь или кнопками в чате');
     if (!d.isAdmin) return out;
+    if (!pv) out += `<button class="btn soft" id="grPrevOn" style="margin:0 0 12px">👀 Как видят сотрудники</button>`;
     // админ: черновик
     const dr = d.draft;
     if (d.job) out += card(`<h2>⏳ Составляю черновик…</h2><p class="sub">Это займёт пару минут. Готовый черновик пришлю в бот</p><button class="btn soft" id="grReload">🔄 Обновить</button>`);
@@ -2024,6 +2044,14 @@ const binds = {
     });
     document.querySelectorAll('[data-grbusy]').forEach(b => b.onclick = () => { keepNote(); grZ = b.dataset.grbusy; render(); });
     document.querySelectorAll('[data-grz-st]').forEach(b => b.onclick = () => toast(b.dataset.grzSt === 'ok' ? 'Выходной по заявлению одобрен ✅' : 'Заявление ждёт решения админа ⏳'));
+    const po = document.getElementById('grPrevOn');
+    if (po) po.onclick = async () => {
+      po.disabled = true; po.textContent = 'Считаю лимиты по таблице…';
+      try { grPrev = await call('grPreview'); grSel = null; render(); window.scrollTo(0, 0); } catch (e) { toast(e.message); po.disabled = false; po.textContent = '👀 Как видят сотрудники'; }
+    };
+    const pf = document.getElementById('grPrevOff'); if (pf) pf.onclick = () => { grPrev = null; grSel = null; render(); };
+    const ps = document.getElementById('grPrevSave'); if (ps) ps.onclick = () => toast('Это предпросмотр — у сотрудника тут сохранится 🌴');
+    if (grPrev) document.querySelectorAll('[data-grbusy]').forEach(b => b.onclick = () => toast('У сотрудника тут откроется заявление с причиной'));
     const zs = document.getElementById('grZSend');
     if (zs) zs.onclick = async () => {
       const reason = document.getElementById('grZr').value.trim();
