@@ -291,6 +291,9 @@
   .chip.on{background:var(--forest);border-color:var(--forest);color:var(--cream)}
   .chip.on::before{content:"✓ "}
   .grchips .chip.on::before{content:none}
+  .grchips .chip.busy{opacity:.6;border-style:dashed}
+  .grleft{color:var(--muted);font-size:12px}
+  .grchips .chip.on .grleft{color:inherit}
   .grlist{margin:6px 0 0;padding-left:18px;font-size:14px;line-height:1.45}
   .badge{display:inline-block;background:var(--olive-soft);border-radius:999px;padding:4px 10px;font-size:14px;margin:3px 4px 3px 0}
   textarea{width:100%;border:1.5px solid transparent;background:var(--cream);border-radius:12px;padding:10px 12px;outline:none;resize:vertical}
@@ -340,7 +343,7 @@ let extraOpen = null;   // блок «Сварил что-то ещё» откр
 let fzv = {};           // сколько из сваренного ушло в морозилку (pid → текст)
 let fridgeData = null, bkData = null, cardData = null, cardName = null, bkOpen = false;
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
-let grD = null, grSel = null, grForm = {};   // вкладка «График»
+let grD = null, grSel = null, grForm = {}, grZ = null;   // вкладка «График»; grZ — день, на который пишем заявление
 let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
 async function call(action, payload) {
@@ -1592,12 +1595,22 @@ const views = {
     // сотрудник: отметить желаемые выходные
     if (r && r.open && (d.inList || !d.isAdmin)) {
       if (!grSel) grSel = new Set((d.mine && d.mine.d) || []);
-      const chips = range(r.from, r.to).map(x => `<button class="chip ${grSel.has(x) ? 'on' : ''}" data-grday="${x}">${grSel.has(x) ? '🌴 ' : ''}${esc(dayS(x))}</button>`).join('');
-      out += card(`<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(r.from)}–${dmS(r.to)}. Отметь дни, когда хочешь отдыхать, до <b>${dmS(r.deadline)}</b> включительно — бот постарается учесть</p>
+      // 🌴 мой выходной · 🔒 день занят (можно заявление) · ⏳ заявление ждёт · ✅ заявление одобрено · «ещё N» — сколько мест
+      const info = x => (d.days || []).find(y => y.date === x) || { free: true, left: null, z: '' };
+      const chips = range(r.from, r.to).map(x => {
+        const i = info(x), mine = grSel.has(x);
+        if (!mine && (i.z === 'ok' || i.z === 'wait')) return `<button class="chip ${i.z === 'ok' ? 'on' : 'busy'}" data-grz-st="${i.z}">${i.z === 'ok' ? '✅ ' : '⏳ '}${esc(dayS(x))}</button>`;
+        if (!mine && !i.free) return `<button class="chip busy" data-grbusy="${x}">🔒 ${esc(dayS(x))}</button>`;
+        return `<button class="chip ${mine ? 'on' : ''}" data-grday="${x}">${mine ? '🌴 ' : ''}${esc(dayS(x))}${!mine && i.left != null ? `<small class="grleft"> · ещё ${i.left}</small>` : ''}</button>`;
+      }).join('');
+      const zForm = grZ ? card(`<h2>📝 Заявление на выходной</h2><p class="sub">${esc(dayS(grZ))} уже занят — в один день могут отдыхать не все, иначе некому работать. Если очень нужно — напиши причину, админ решит и бот пришлёт ответ</p>
+        <div class="form"><textarea id="grZr" rows="3" maxlength="300" placeholder="Например: запись к врачу, экзамен"></textarea></div>
+        <div class="two"><button class="btn" id="grZSend">Отправить админу</button><button class="btn soft" id="grZNo">Отмена</button></div>`) : '';
+      out += card(`<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(r.from)}–${dmS(r.to)}. Отметь дни, когда хочешь отдыхать, до <b>${dmS(r.deadline)}</b> включительно — бот постарается учесть. 🔒 — день уже занят, но можно подать заявление</p>
         <div class="chips grchips">${chips}</div>
-        <div class="form"><label>Комментарий (необязательно)<textarea id="grNote" rows="2" maxlength="300" placeholder="Например: хочу 4/3 на этой неделе">${esc((d.mine && d.mine.note) || '')}</textarea></label></div>
+        <div class="form"><label>Комментарий (необязательно)<textarea id="grNote" rows="2" maxlength="300" placeholder="Например: хочу 4/3 на этой неделе">${esc(grForm.note != null ? grForm.note : (d.mine && d.mine.note) || '')}</textarea></label></div>
         <button class="btn" id="grSave">${d.mine && d.mine.done ? 'Сохранить изменения' : 'Сохранить'}</button>
-        ${d.mine && d.mine.done ? `<p class="sub" style="margin-top:10px">✅ Записано: ${d.mine.d.length ? d.mine.d.map(dmS).join(', ') : 'без пожеланий'}</p>` : ''}`);
+        ${d.mine && d.mine.done ? `<p class="sub" style="margin-top:10px">✅ Записано: ${d.mine.d.length ? d.mine.d.map(dmS).join(', ') : 'без пожеланий'}</p>` : ''}`) + zForm;
     } else if (r && !r.open && !d.isAdmin) out += empty('🗓', 'Сбор выходных закончен', `Пожелания на ${dmS(r.from)}–${dmS(r.to)} собраны — скоро будет график`);
     else if (!d.isAdmin) out += empty('🗓', 'Сейчас сбор выходных не идёт', 'Когда админ начнёт составлять график, бот пришлёт сообщение — отметишь дни здесь или кнопками в чате');
     if (!d.isAdmin) return out;
@@ -1615,7 +1628,7 @@ const views = {
     }
     // админ: ответы
     if (r) {
-      const ans = (d.answers || []).map(w => `<div class="prow"><div class="pname"><b>${esc(w.name)}</b><span>${w.d.length ? '🌴 ' + w.d.map(dmS).join(', ') : 'без пожеланий'}${w.note ? ' · «' + esc(w.note) + '»' : ''}</span></div></div>`).join('');
+      const ans = (d.answers || []).map(w => `<div class="prow"><div class="pname"><b>${esc(w.name)}</b><span>${w.d.length ? '🌴 ' + w.d.map(dmS).join(', ') : 'без пожеланий'}${w.note ? ' · «' + esc(w.note) + '»' : ''}${(w.z || []).map(z => `<br>📝 ${dmS(z.date)}: ${z.st === 'ok' ? '✅ одобрено' : z.st === 'no' ? '❌ отказано' : '⏳ ждёт'} — «${esc(z.r)}»`).join('')}</span></div></div>`).join('');
       out += card(`<h2>Ответы · ${dmS(r.from)}–${dmS(r.to)}</h2><p class="sub">${r.open ? 'Сбор идёт до ' + dmS(r.deadline) + ' включительно. Потом бот сам пришлёт итог и кнопку «Составить черновик»' : 'Сбор закончен'}</p>
         ${ans || '<p class="sub">Пока никто не ответил</p>'}
         ${(d.wait || []).length ? `<p class="sub" style="margin-top:10px">Не ответили: ${esc(d.wait.join(', '))}</p>` : ''}
@@ -1996,13 +2009,25 @@ const binds = {
       try { const r = await call(action, payload); grD = r; grSel = null; if (r.msg) toast(r.msg); else if (ok) toast(ok); haptic('success'); render(); return r; }
       catch (e) { toast(e.message); if (btn) btn.disabled = false; }
     };
+    const keepNote = () => { const n = document.getElementById('grNote'); if (n) grForm.note = n.value; };
     document.querySelectorAll('[data-grday]').forEach(b => b.onclick = () => {
       const x = b.dataset.grday; if (grSel.has(x)) grSel.delete(x); else grSel.add(x);
-      b.classList.toggle('on', grSel.has(x)); b.textContent = (grSel.has(x) ? '🌴 ' : '') + b.textContent.replace(/^🌴 /, '');
       try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
+      keepNote(); render();
     });
+    document.querySelectorAll('[data-grbusy]').forEach(b => b.onclick = () => { keepNote(); grZ = b.dataset.grbusy; render(); });
+    document.querySelectorAll('[data-grz-st]').forEach(b => b.onclick = () => toast(b.dataset.grzSt === 'ok' ? 'Выходной по заявлению одобрен ✅' : 'Заявление ждёт решения админа ⏳'));
+    const zs = document.getElementById('grZSend');
+    if (zs) zs.onclick = async () => {
+      const reason = document.getElementById('grZr').value.trim();
+      if (!reason) return toast('Напиши причину');
+      keepNote(); const date = grZ;
+      const r = await act(zs, 'grZ', { date, reason });
+      if (r) { grZ = null; render(); }
+    };
+    const zn = document.getElementById('grZNo'); if (zn) zn.onclick = () => { keepNote(); grZ = null; render(); };
     const sv = document.getElementById('grSave');
-    if (sv) sv.onclick = () => act(sv, 'grWish', { d: Array.from(grSel), note: document.getElementById('grNote').value.trim() }, 'Записал 🌴 Спасибо!');
+    if (sv) sv.onclick = () => { grForm.note = null; return act(sv, 'grWish',{ d: Array.from(grSel), note: document.getElementById('grNote').value.trim() }, 'Записал 🌴 Спасибо!'); };
     const rl = document.getElementById('grReload'); if (rl) rl.onclick = () => { grD = null; render(); };
     const op = document.getElementById('grOpen'); if (op) op.onclick = () => { try { tg.openLink(op.dataset.url); } catch (e) { window.open(op.dataset.url, '_blank'); } };
     const ap = document.getElementById('grApprove');
