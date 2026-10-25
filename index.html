@@ -410,7 +410,7 @@ function tabsList() {
   if (me.orderer && !me.isAdmin) return [['order', 'Заказ']];
   const tasksLbl = 'Задачи' + (me.openTasks ? `<span class="tabcount">${me.openTasks}</span>` : '');
   const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['tk', 'Техкарты']];
-  if (me.isAdmin && !me.isOwner) t.splice(5, 0, ['grafik', 'График']);   // пока только админу (владельцам — никогда)
+  if (me.isAdmin || (!me.isOwner && (me.statuses || {})[me.name] !== 'управляющий')) t.splice(5, 0, ['grafik', 'График']);   // владельцам и управляющим не нужна
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
   else if (me.isViewer) t.push(['history', 'История']);   // админ-наблюдатель: всё как у сотрудника + история закрытий
   return t;
@@ -1125,6 +1125,13 @@ const HELP = [
     'В 9:00 бот пишет в группу, что истекает сегодня и завтра.',
     'Остатки обновляются сами по подсчёту на закрытии — отдельно ничего вписывать не нужно.',
     'Морозилка (тыквенное пюре): кнопки «Разморозить» и «Положить в морозилку». После разморозки пюре хранится 3 дня — бот считает срок с дня разморозки.']],
+  ['🗓', 'График и выходные', [
+    'Каждую пятницу в 12:00 бот пишет в личку: отметь, в какие дни следующей недели хочешь отдыхать. Принимаем до субботы 18:00.',
+    'Отмечай кнопками прямо в сообщении бота или во вкладке «График»: нажми на день — появится 🌴. В конце — «Готово» (в боте) или «Сохранить» (в приложении). Передумал(а) — поменяй до срока.',
+    'В один день могут отдыхать не все — иначе некому работать. «ещё 2» — сколько мест на выходной осталось в этот день. 🔒 — мест нет.',
+    'Если день занят, а очень нужно — нажми на 🔒 и напиши причину: это заявление, его решает админ. ⏳ — ждёт решения, ✅ — одобрено. Ответ придёт в бот.',
+    'Иногда админ может попросить перенести твой выходной на другой день — бот пришлёт кнопки свободных дней. Не можешь — нажми «Не могу».',
+    'После срока бот сам составляет график с учётом пожеланий и вносит в таблицу, админ проверяет.']],
   ['🔄', 'Замена смены', [
     'Открой «Сегодня» → «Мои смены» → нажми «Замена» у нужного дня.',
     'Выбери вариант. «Отдать смену» — кто возьмёт, выйдет вместо тебя, у тебя будет выходной. «Поменяться сменами» — тот, кто работает в этот день, выйдет на твоё время, а ты — на его.',
@@ -1606,7 +1613,7 @@ const views = {
       const zForm = grZ ? card(`<h2>📝 Заявление на выходной</h2><p class="sub">${esc(dayS(grZ))} уже занят — в один день могут отдыхать не все, иначе некому работать. Если очень нужно — напиши причину, админ решит и бот пришлёт ответ</p>
         <div class="form"><textarea id="grZr" rows="3" maxlength="300" placeholder="Например: запись к врачу, экзамен"></textarea></div>
         <div class="two"><button class="btn" id="grZSend">Отправить админу</button><button class="btn soft" id="grZNo">Отмена</button></div>`) : '';
-      out += card(`<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(r.from)}–${dmS(r.to)}. Отметь дни, когда хочешь отдыхать, до <b>${dmS(r.deadline)}</b> включительно — бот постарается учесть. 🔒 — день уже занят, но можно подать заявление</p>
+      out += card(`<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(r.from)}–${dmS(r.to)}. Отметь дни, когда хочешь отдыхать, до <b>${esc(r.dlText)}</b> — бот постарается учесть. 🔒 — день уже занят, но можно подать заявление</p>
         <div class="chips grchips">${chips}</div>
         <div class="form"><label>Комментарий (необязательно)<textarea id="grNote" rows="2" maxlength="300" placeholder="Например: хочу 4/3 на этой неделе">${esc(grForm.note != null ? grForm.note : (d.mine && d.mine.note) || '')}</textarea></label></div>
         <button class="btn" id="grSave">${d.mine && d.mine.done ? 'Сохранить изменения' : 'Сохранить'}</button>
@@ -1618,22 +1625,22 @@ const views = {
     const dr = d.draft;
     if (d.job) out += card(`<h2>⏳ Составляю черновик…</h2><p class="sub">Это займёт пару минут. Готовый черновик пришлю в бот</p><button class="btn soft" id="grReload">🔄 Обновить</button>`);
     else if (dr) {
-      const st = { new: 'ждёт решения', approved: '✅ утверждён — перенесён в лист «' + dr.month + '»', manual: '✍️ оставлен — правишь сам' }[dr.status] || dr.status;
-      out += card(`<h2>🧩 Черновик ${dmS(dr.from)}–${dmS(dr.to)}</h2><p class="sub">Лист «${esc(dr.sheet)}» · ${esc(st)}</p>
+      const st = { done: '✅ внесён в лист «' + dr.month + '»', new: 'ждёт решения', approved: '✅ утверждён — перенесён в лист «' + dr.month + '»', manual: '✍️ оставлен — правишь сам' }[dr.status] || dr.status;
+      out += card(`<h2>🧩 График ${dmS(dr.from)}–${dmS(dr.to)}</h2><p class="sub">Лист «${esc(dr.sheet)}» · ${esc(st)}</p>
         ${dr.wishes ? `<p class="sub">🌴 Желаемые выходные: учтено ${dr.wishOk} из ${dr.wishes}</p>` : ''}
         ${dr.notes.length ? `<p class="sub">${dr.notes.map(x => '🕖 ' + esc(x)).join('<br>')}</p>` : ''}
         ${dr.issues.length ? `<h3>⚠️ Не сходится с правилами (${dr.issues.length})</h3><ul class="grlist">${dr.issues.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="sub">✅ Все правила соблюдены</p>'}
-        <button class="btn soft" id="grOpen" data-url="${esc(dr.url)}">📄 Открыть черновик</button>
+        ${(dr.urls || [{ sheet: dr.sheet, url: dr.url }]).map(u => `<button class="btn soft" data-grurl="${esc(u.url)}">📄 Открыть «${esc(u.sheet)}»</button>`).join('')}
         ${dr.status === 'new' ? `<div class="two"><button class="btn" id="grApprove">✅ Утвердить</button><button class="btn soft" id="grManual">✍️ Поправлю сам</button></div>` : ''}`);
     }
     // админ: ответы
     if (r) {
       const ans = (d.answers || []).map(w => `<div class="prow"><div class="pname"><b>${esc(w.name)}</b><span>${w.d.length ? '🌴 ' + w.d.map(dmS).join(', ') : 'без пожеланий'}${w.note ? ' · «' + esc(w.note) + '»' : ''}${(w.z || []).map(z => `<br>📝 ${dmS(z.date)}: ${z.st === 'ok' ? '✅ одобрено' : z.st === 'no' ? '❌ отказано' : '⏳ ждёт'} — «${esc(z.r)}»`).join('')}</span></div></div>`).join('');
-      out += card(`<h2>Ответы · ${dmS(r.from)}–${dmS(r.to)}</h2><p class="sub">${r.open ? 'Сбор идёт до ' + dmS(r.deadline) + ' включительно. Потом бот сам пришлёт итог и кнопку «Составить черновик»' : 'Сбор закончен'}</p>
+      out += card(`<h2>Ответы · ${dmS(r.from)}–${dmS(r.to)}</h2><p class="sub">${r.open ? 'Сбор идёт до ' + esc(r.dlText) + '. Потом бот сам составит график и внесёт в лист месяца' : 'Сбор закончен'}</p>
         ${ans || '<p class="sub">Пока никто не ответил</p>'}
         ${(d.wait || []).length ? `<p class="sub" style="margin-top:10px">Не ответили: ${esc(d.wait.join(', '))}</p>` : ''}
         ${r.open ? '<button class="btn soft" id="grStop">Закончить сбор сейчас</button>' : ''}
-        <button class="btn" id="grGen" ${d.job ? 'disabled' : ''}>🧩 Составить черновик на ${dmS(r.from)}–${dmS(r.to)}</button>`);
+        <button class="btn" id="grGen" ${d.job ? 'disabled' : ''}>🧩 Составить график на ${dmS(r.from)}–${dmS(r.to)}</button>`);
     }
     // админ: новый сбор
     const t = d.today, dow = new Date(t + 'T12:00:00Z').getUTCDay() || 7, mon = addD(t, 8 - dow);
@@ -1643,7 +1650,7 @@ const views = {
       <label>Ответить до (включительно)<input id="grDl" type="date" min="${t}" value="${dl}"></label>
       <p class="sub">Период — в пределах одного месяца. Что уже стоит в листе месяца (ВЫХ, отпуск, выезд, время) — бот оставит как есть. Новый сбор стирает ответы прошлого</p>
       <button class="btn" id="grStart">Разослать команде</button>
-      <button class="btn soft" id="grGenNow">Составить черновик без сбора</button></div></details>`;
+      <button class="btn soft" id="grGenNow">Составить график без сбора</button></div></details>`;
     return out;
   },
   async history() {
@@ -2029,7 +2036,7 @@ const binds = {
     const sv = document.getElementById('grSave');
     if (sv) sv.onclick = () => { grForm.note = null; return act(sv, 'grWish',{ d: Array.from(grSel), note: document.getElementById('grNote').value.trim() }, 'Записал 🌴 Спасибо!'); };
     const rl = document.getElementById('grReload'); if (rl) rl.onclick = () => { grD = null; render(); };
-    const op = document.getElementById('grOpen'); if (op) op.onclick = () => { try { tg.openLink(op.dataset.url); } catch (e) { window.open(op.dataset.url, '_blank'); } };
+    document.querySelectorAll('[data-grurl]').forEach(op => op.onclick = () => { try { tg.openLink(op.dataset.grurl); } catch (e) { window.open(op.dataset.grurl, '_blank'); } });
     const ap = document.getElementById('grApprove');
     if (ap) ap.onclick = async () => {
       if (!(await confirmBox('Перенести смены из черновика в лист месяца?'))) return;
