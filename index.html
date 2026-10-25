@@ -1640,10 +1640,20 @@ const views = {
     } else if (r && !r.open && !d.isAdmin) out += empty('🗓', 'Сбор выходных закончен', `Пожелания на ${dmS(r.from)}–${dmS(r.to)} собраны — скоро будет график`);
     else if (!d.isAdmin) out += empty('🗓', 'Сейчас сбор выходных не идёт', 'Когда админ начнёт составлять график, бот пришлёт сообщение — отметишь дни здесь или кнопками в чате');
     if (!d.isAdmin) return out;
-    if (!pv) out += `<button class="btn soft" id="grPrevOn" style="margin:0 0 12px">👀 Как видят сотрудники</button>`;
-    // админ: черновик
+    // админ: по дням — сколько выходных занято (из скольки можно) и кто взял
+    if (r) {
+      const wdL = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'long', timeZone: 'UTC' });
+      const dnL = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+      const rows = (d.days || []).map(x => { const n = (x.names || []).length, full = x.cap != null && n >= x.cap;
+        return `<div class="grrow"><div class="grday"><b>${esc(wdL(x.date))}</b><span>${esc(dnL(x.date))}${n ? ' · 🌴 ' + esc(x.names.join(', ')) : ''}</span></div><span class="grbtn ${full ? 'on' : ''}">${n}${x.cap != null ? ' из ' + x.cap : ''}</span></div>`; }).join('');
+      const zl = (d.answers || []).flatMap(w => (w.z || []).map(z => `<br>📝 ${esc(w.name)}, ${dmS(z.date)}: ${z.st === 'ok' ? '✅ одобрено' : z.st === 'no' ? '❌ отказано' : '⏳ ждёт решения'} — «${esc(z.r)}»`)).join('');
+      out += card(`<h2>🗓 Выходные ${dmS(r.from)}–${dmS(r.to)}</h2><p class="sub">${r.open ? 'Сбор идёт до ' + esc(r.dlText) + ', потом бот сам составит график и внесёт в таблицу' : 'Сбор закончен'}. Справа — сколько выходных взяли из скольки можно</p>
+        <div class="grlist2">${rows}</div>
+        ${(d.wait || []).length ? `<p class="sub" style="margin-top:10px">Ещё не ответили: ${esc(d.wait.join(', '))}</p>` : ''}${zl ? `<p class="sub" style="margin-top:6px">Заявления:${zl}</p>` : ''}`);
+    } else out += empty('🗓', 'Сбор выходных сейчас не идёт', 'Каждую пятницу в 12:00 бот сам открывает сбор на следующую неделю (до субботы 18:00), потом сам составляет график и вносит в таблицу');
+    // админ: составленный график
     const dr = d.draft;
-    if (d.job) out += card(`<h2>⏳ Составляю черновик…</h2><p class="sub">Это займёт пару минут. Готовый черновик пришлю в бот</p><button class="btn soft" id="grReload">🔄 Обновить</button>`);
+    if (d.job) out += card(`<h2>⏳ Составляю график…</h2><p class="sub">Это займёт пару минут — пришлю в бот</p><button class="btn soft" id="grReload">🔄 Обновить</button>`);
     else if (dr) {
       const st = { done: '✅ внесён в лист «' + dr.month + '»', new: 'ждёт решения', approved: '✅ утверждён — перенесён в лист «' + dr.month + '»', manual: '✍️ оставлен — правишь сам' }[dr.status] || dr.status;
       out += card(`<h2>🧩 График ${dmS(dr.from)}–${dmS(dr.to)}</h2><p class="sub">Лист «${esc(dr.sheet)}» · ${esc(st)}</p>
@@ -1653,24 +1663,6 @@ const views = {
         ${(dr.urls || [{ sheet: dr.sheet, url: dr.url }]).map(u => `<button class="btn soft" data-grurl="${esc(u.url)}">📄 Открыть «${esc(u.sheet)}»</button>`).join('')}
         ${dr.status === 'new' ? `<div class="two"><button class="btn" id="grApprove">✅ Утвердить</button><button class="btn soft" id="grManual">✍️ Поправлю сам</button></div>` : ''}`);
     }
-    // админ: ответы
-    if (r) {
-      const ans = (d.answers || []).map(w => `<div class="prow"><div class="pname"><b>${esc(w.name)}</b><span>${w.d.length ? '🌴 ' + w.d.map(dmS).join(', ') : 'без пожеланий'}${w.note ? ' · «' + esc(w.note) + '»' : ''}${(w.z || []).map(z => `<br>📝 ${dmS(z.date)}: ${z.st === 'ok' ? '✅ одобрено' : z.st === 'no' ? '❌ отказано' : '⏳ ждёт'} — «${esc(z.r)}»`).join('')}</span></div></div>`).join('');
-      out += card(`<h2>Ответы · ${dmS(r.from)}–${dmS(r.to)}</h2><p class="sub">${r.open ? 'Сбор идёт до ' + esc(r.dlText) + '. Потом бот сам составит график и внесёт в лист месяца' : 'Сбор закончен'}</p>
-        ${ans || '<p class="sub">Пока никто не ответил</p>'}
-        ${(d.wait || []).length ? `<p class="sub" style="margin-top:10px">Не ответили: ${esc(d.wait.join(', '))}</p>` : ''}
-        ${r.open ? '<button class="btn soft" id="grStop">Закончить сбор сейчас</button>' : ''}
-        <button class="btn" id="grGen" ${d.job ? 'disabled' : ''}>🧩 Составить график на ${dmS(r.from)}–${dmS(r.to)}</button>`);
-    }
-    // админ: новый сбор
-    const t = d.today, dow = new Date(t + 'T12:00:00Z').getUTCDay() || 7, mon = addD(t, 8 - dow);
-    const f = grForm.from || mon, to = grForm.to || addD(mon, 6), dl = grForm.deadline || (addD(f, -3) > t ? addD(f, -3) : t);
-    out += `<details class="card" ${r ? '' : 'open'}><summary><div class="pname"><h2>＋ Новый сбор выходных</h2><p class="sub">Вручную, на любые дни</p></div></summary><div class="form">
-      <div class="two"><label>С<input id="grFrom" type="date" value="${f}"></label><label>По<input id="grTo" type="date" value="${to}"></label></div>
-      <label>Ответить до (включительно)<input id="grDl" type="date" min="${t}" value="${dl}"></label>
-      <p class="sub">Обычно не нужно: каждую пятницу в 12:00 бот сам открывает сбор на следующую неделю (до субботы 18:00) и потом сам составляет график. Здесь — если нужен сбор на другие дни. Что уже стоит в листе месяца (ВЫХ, отпуск, выезд, время) — бот оставит как есть. Новый сбор стирает ответы прошлого</p>
-      <button class="btn" id="grStart">Разослать команде</button>
-      <button class="btn soft" id="grGenNow">Составить график без сбора</button></div></details>`;
     return out;
   },
   async history() {
