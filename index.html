@@ -352,7 +352,7 @@ let extraOpen = null;   // блок «Сварил что-то ещё» откр
 let fzv = {};           // сколько из сваренного ушло в морозилку (pid → текст)
 let fridgeData = null, bkData = null, cardData = null, cardName = null, bkOpen = false;
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
-let grD = null, grSel = null, grForm = {}, grZ = null, grPrev = null;   // grPrev — предпросмотр для админа   // вкладка «График»; grZ — день, на который пишем заявление
+let grD = null, grSel = null, grForm = {}, grZ = null, grPrev = null, grF43 = false, grVac = null;   // grF43 — «хочу 4/3», grVac — форма отпуска/больничного   // grPrev — предпросмотр для админа   // вкладка «График»; grZ — день, на который пишем заявление
 let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
 
 async function call(action, payload) {
@@ -1612,7 +1612,7 @@ const views = {
     const pv = d.isAdmin && grPrev;   // админ смотрит, как видят сотрудники
     if (pv || (r && r.open && (d.inList || !d.isAdmin))) {
       const rr = pv ? grPrev : r, mineD = pv ? null : d.mine, days = pv ? grPrev.days : d.days;
-      if (!grSel) grSel = new Set((mineD && mineD.d) || []);
+      if (!grSel) { grSel = new Set((mineD && mineD.d) || []); grF43 = !!(mineD && mineD.f43); }
       // список дней: день недели и число, сколько ещё можно взять выходных, кнопка «Выходной»
       // 🌴 мой выходной · 🔒 мест нет (можно заявление) · ⏳ заявление ждёт · ✅ заявление одобрено
       const info = x => (days || []).find(y => y.date === x) || { free: true, left: null, z: '' };
@@ -1633,10 +1633,16 @@ const views = {
         <div class="two"><button class="btn" id="grZSend">Отправить админу</button><button class="btn soft" id="grZNo">Отмена</button></div>`) : '';
       out += card(`${pv ? '<p class="sub" style="margin:0 0 8px;color:var(--warm)">👀 Предпросмотр — так увидят сотрудники. Нажимать можно, но ничего не сохранится</p>' : ''}<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(rr.from)}–${dmS(rr.to)}. Отметь дни, когда хочешь отдыхать, до <b>${esc(rr.dlText)}</b> — бот постарается учесть. В один день могут отдыхать не все: если мест нет (🔒), можно подать заявление</p>
         <div class="grlist2">${chips}</div>
-        <div class="form"><label>Комментарий (необязательно)<textarea id="grNote" rows="2" maxlength="300" placeholder="Например: хочу 4/3 на этой неделе">${esc(grForm.note != null ? grForm.note : (mineD && mineD.note) || '')}</textarea></label></div>
+        <div class="grrow${grF43 ? ' on' : ''}" style="margin-top:8px"><div class="grday"><b>Хочу 4/3</b><span>4 смены на этой неделе вместо 5</span></div><button class="grbtn ${grF43 ? 'on' : ''}" id="grF43">${grF43 ? '✅ Да' : 'Нет'}</button></div>
+        <div class="form"><label>Комментарий для админа (необязательно)<textarea id="grNote" rows="2" maxlength="300" placeholder="Например: в пятницу могу только с 16:00">${esc(grForm.note != null ? grForm.note : (mineD && mineD.note) || '')}</textarea></label></div>
         <button class="btn" id="${pv ? 'grPrevSave' : 'grSave'}">${mineD && mineD.done ? 'Сохранить изменения' : 'Сохранить'}</button>
         ${pv ? '<button class="btn soft" id="grPrevOff">Закрыть предпросмотр</button>' : ''}
-        ${mineD && mineD.done ? `<p class="sub" style="margin-top:10px">✅ Записано: ${mineD.d.length ? mineD.d.map(dmS).join(', ') : 'без пожеланий'}</p>` : ''}`) + zForm;
+        ${mineD && mineD.done ? `<p class="sub" style="margin-top:10px">✅ Записано: ${mineD.d.length ? mineD.d.map(dmS).join(', ') : 'без пожеланий'}${mineD.f43 ? ' · 4/3' : ''}</p>` : ''}`) + zForm +
+        (pv ? '' : card(grVac ? `<h2>🤒 Отпуск / больничный</h2><p class="sub">Выбери, что и с какого по какое число. Админ подтвердит — бот впишет в график и не поставит тебя на смены</p>
+          <div class="two"><button class="grbtn ${grVac.t === 'o' ? 'on' : ''}" data-grvt="o">🏖 Отпуск</button><button class="grbtn ${grVac.t === 'b' ? 'on' : ''}" data-grvt="b">🤒 Больничный</button></div>
+          <div class="form two"><label>С<input type="date" id="grVFrom" value="${esc(grVac.from || '')}"></label><label>По<input type="date" id="grVTo" value="${esc(grVac.to || '')}"></label></div>
+          <div class="two"><button class="btn" id="grVSend">Отправить админу</button><button class="btn soft" id="grVNo">Отмена</button></div>`
+          : `<button class="btn soft" id="grVOpen">🤒 Я в отпуске / на больничном</button>`));
     } else if (r && !r.open && !d.isAdmin) out += empty('🗓', 'Сбор выходных закончен', `Пожелания на ${dmS(r.from)}–${dmS(r.to)} собраны — скоро будет график`);
     else if (!d.isAdmin) out += empty('🗓', 'Сейчас сбор выходных не идёт', 'Когда админ начнёт составлять график, бот пришлёт сообщение — отметишь дни здесь или кнопками в чате');
     if (!d.isAdmin) return out;
@@ -1661,7 +1667,9 @@ const views = {
         ${dr.notes.length ? `<p class="sub">${dr.notes.map(x => '🕖 ' + esc(x)).join('<br>')}</p>` : ''}
         ${dr.issues.length ? `<h3>⚠️ Не сходится с правилами (${dr.issues.length})</h3><ul class="grlist">${dr.issues.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="sub">✅ Все правила соблюдены</p>'}
         ${(dr.urls || [{ sheet: dr.sheet, url: dr.url }]).map(u => `<button class="btn soft" data-grurl="${esc(u.url)}">📄 Открыть «${esc(u.sheet)}»</button>`).join('')}
-        ${dr.status === 'new' ? `<div class="two"><button class="btn" id="grApprove">✅ Утвердить</button><button class="btn soft" id="grManual">✍️ Поправлю сам</button></div>` : ''}`);
+        ${dr.status === 'new' ? `<div class="two"><button class="btn" id="grApprove">✅ Утвердить</button><button class="btn soft" id="grManual">✍️ Поправлю сам</button></div>` : ''}
+        ${dr.status === 'done' ? `<p class="sub" style="margin-top:10px">${dr.sent > 0 ? '📤 Команде разослан ' + esc(new Date(dr.sent).toLocaleString('ru-RU', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) : '📤 ' + esc(dr.sendNote || '')}</p>
+          <div class="two"><button class="btn" id="grSend">📤 ${dr.sent > 0 ? 'Разослать ещё раз' : 'Разослать команде'}</button><button class="btn soft" id="grRegen">🔄 Пересоставить</button></div>` : ''}`);
     }
     return out;
   },
@@ -2054,7 +2062,24 @@ const binds = {
     };
     const zn = document.getElementById('grZNo'); if (zn) zn.onclick = () => { keepNote(); grZ = null; render(); };
     const sv = document.getElementById('grSave');
-    if (sv) sv.onclick = () => { grForm.note = null; return act(sv, 'grWish',{ d: Array.from(grSel), note: document.getElementById('grNote').value.trim() }, 'Записал 🌴 Спасибо!'); };
+    if (sv) sv.onclick = () => { grForm.note = null; return act(sv, 'grWish',{ d: Array.from(grSel), note: document.getElementById('grNote').value.trim(), f43: grF43 }, 'Записал 🌴 Спасибо!'); };
+    const f43 = document.getElementById('grF43'); if (f43) f43.onclick = () => { grF43 = !grF43; keepNote(); render(); };
+    const keepVac = () => { if (!grVac) return; ['from', 'to'].forEach((k, i) => { const el = document.getElementById(i ? 'grVTo' : 'grVFrom'); if (el) grVac[k] = el.value; }); };
+    const vo = document.getElementById('grVOpen'); if (vo) vo.onclick = () => { keepNote(); grVac = { t: '', from: '', to: '' }; render(); };
+    document.querySelectorAll('[data-grvt]').forEach(b => b.onclick = () => { keepNote(); keepVac(); grVac.t = b.dataset.grvt; render(); });
+    const vn = document.getElementById('grVNo'); if (vn) vn.onclick = () => { keepNote(); grVac = null; render(); };
+    const vs = document.getElementById('grVSend');
+    if (vs) vs.onclick = async () => {
+      keepNote(); keepVac();
+      if (!grVac.t) return toast('Выбери: отпуск или больничный');
+      if (!grVac.from) return toast('Выбери, с какого числа');
+      const r = await act(vs, 'grVac', { t: grVac.t, from: grVac.from, to: grVac.to || grVac.from });
+      if (r) { grVac = null; render(); }
+    };
+    const gs = document.getElementById('grSend');
+    if (gs) gs.onclick = async () => { if (await confirmBox('Разослать каждому его смены на эту неделю?')) act(gs, 'grSend', {}); };
+    const gr = document.getElementById('grRegen');
+    if (gr) gr.onclick = async () => { if (await confirmBox('Пересоставить график? Уберу то, что вписал бот, и составлю заново. Клетки, которые ты правил руками, останутся')) act(gr, 'grRegen', {}); };
     const rl = document.getElementById('grReload'); if (rl) rl.onclick = () => { grD = null; render(); };
     document.querySelectorAll('[data-grurl]').forEach(op => op.onclick = () => { try { tg.openLink(op.dataset.grurl); } catch (e) { window.open(op.dataset.grurl, '_blank'); } });
     const ap = document.getElementById('grApprove');
