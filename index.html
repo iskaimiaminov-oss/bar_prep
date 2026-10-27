@@ -1656,6 +1656,9 @@ const views = {
         <div class="grlist2">${rows}</div>
         ${(d.wait || []).length ? `<p class="sub" style="margin-top:10px">Ещё не ответили: ${esc(d.wait.join(', '))}</p>` : ''}${zl ? `<p class="sub" style="margin-top:6px">Заявления:${zl}</p>` : ''}`);
     } else out += empty('🗓', 'Сбор выходных сейчас не идёт', 'Каждую пятницу в 12:00 бот сам открывает сбор на следующую неделю (до субботы 18:00), потом сам составляет график и вносит в таблицу');
+    // админ: начать сбор на следующую неделю раньше пятницы
+    const nx = d.next;
+    if (nx && !nx.err) out += card(`<h2>🚀 Сбор на ${dmS(nx.from)}–${dmS(nx.to)}</h2><p class="sub">Не ждать пятницы: бот сразу напишет команде, примет выходные до ${esc(nx.dlText)}, напомнит и сам составит график. В пятницу второй сбор не откроется</p><button class="btn" id="grStartNext">🗓 Начать сбор на след. неделю</button>`);
     // админ: составленный график
     const dr = d.draft;
     if (d.job) out += card(`<h2>⏳ Составляю график…</h2><p class="sub">Это займёт пару минут — пришлю в бот</p><button class="btn soft" id="grReload">🔄 Обновить</button>`);
@@ -2098,6 +2101,12 @@ const binds = {
     if (st) st.onclick = async () => {
       if (!(await confirmBox('Разослать команде просьбу отметить желаемые выходные?'))) return;
       act(st, 'grStart', { from: v('grFrom'), to: v('grTo'), deadline: v('grDl') }, 'Разослал команде 📨');
+    };
+    const sn = document.getElementById('grStartNext');
+    if (sn) sn.onclick = async () => {
+      const nx = grD.next || {};
+      if (!(await confirmBox(`Начать сбор выходных на ${nx.from ? nx.from.slice(8, 10) + '.' + nx.from.slice(5, 7) : ''}–${nx.to ? nx.to.slice(8, 10) + '.' + nx.to.slice(5, 7) : ''}? Бот сразу напишет всей команде`))) return;
+      act(sn, 'grStartNext', {});
     };
     const gn = document.getElementById('grGenNow'); if (gn) gn.onclick = () => act(gn, 'grGen', { from: v('grFrom'), to: v('grTo') }, 'Составляю — пришлю в бот через пару минут ⏳');
   },
