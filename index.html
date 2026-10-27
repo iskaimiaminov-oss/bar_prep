@@ -1582,7 +1582,7 @@ const views = {
     const extra = (cfg.extra || []).map((n, k) => `<div class="user"><div class="ava">${esc(n[0] || '?')}</div><div class="pname"><b>${esc(n)}</b><span>добавлен вручную</span></div><button class="x" data-xdel="${k}">×</button></div>`).join('');
     const users = cfg.users.length
       ? cfg.users.map(u => { const v = (cfg.viewers || []).indexOf(u.id) >= 0;
-          return `<div class="user"><div class="ava">${esc(String(u.name)[0] || '?')}</div><div class="pname"><b>${esc(u.name)}</b><span>${v ? '🛡 админ: отчёты, задачи, события' : 'сотрудник'}${(cfg.schedule || []).length && !(cfg.schedule || []).some(n => n.toLowerCase().trim() === String(u.name).toLowerCase().trim()) ? ' · ⚠️ имя не как в графике — не видит свои смены' : ''}</span></div>
+          return `<div class="user"><div class="ava">${esc(String(u.name)[0] || '?')}</div><div class="pname"><b>${esc(u.name)}</b><span>${v ? '🛡 админ: отчёты, задачи, события' : 'сотрудник'}${(cfg.schedule || []).length && !(cfg.schedule || []).some(n => n.toLowerCase().trim() === String(u.name).toLowerCase().trim()) ? ' · ⚠️ имя не как в графике — бот не нашёл однозначную строку, поправь вручную' : ''}</span></div>
           <button class="tkbtn" data-view="${esc(u.id)}" data-on="${v ? 0 : 1}" style="${v ? 'background:var(--forest);color:var(--cream)' : ''}">🛡 Админ</button><button class="x" data-rm="${esc(u.id)}">×</button></div>`; }).join('')
       : '<p class="sub">Пока никто не зарегистрировался. Скинь команде ссылку на бота.</p>';
     const badges = list => list && list.length ? list.map(n => `<span class="badge">${esc(n)}</span>`).join('') : '<span class="sub">никого</span>';
