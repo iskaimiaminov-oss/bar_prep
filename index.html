@@ -1631,7 +1631,7 @@ const views = {
       const zForm = grZ ? card(`<h2>📝 Заявление на выходной</h2><p class="sub">${esc(dayS(grZ))} уже занят — в один день могут отдыхать не все, иначе некому работать. Если очень нужно — напиши причину, админ решит и бот пришлёт ответ</p>
         <div class="form"><textarea id="grZr" rows="3" maxlength="300" placeholder="Например: запись к врачу, экзамен"></textarea></div>
         <div class="two"><button class="btn" id="grZSend">Отправить админу</button><button class="btn soft" id="grZNo">Отмена</button></div>`) : '';
-      out += card(`${pv ? '<p class="sub" style="margin:0 0 8px;color:var(--warm)">👀 Предпросмотр — так увидят сотрудники. Нажимать можно, но ничего не сохранится</p>' : ''}<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(rr.from)}–${dmS(rr.to)}. ${!pv && d.maxOff === 1 ? 'Обычно ты выходишь в субботу и воскресенье. Если нужен выходной — отметь один день' : 'Отметь дни, когда хочешь отдыхать'}, до <b>${esc(rr.dlText)}</b> — бот постарается учесть. В один день могут отдыхать не все: если мест нет (🔒), можно подать заявление</p>
+      out += card(`${pv ? '<p class="sub" style="margin:0 0 8px;color:var(--warm)">👀 Предпросмотр — так увидят сотрудники. Нажимать можно, но ничего не сохранится</p>' : ''}<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(rr.from)}–${dmS(rr.to)}. ${!pv && d.maxOff === 2 ? 'Обычно ты выходишь в субботу и воскресенье. Если нужен выходной — отметь один или оба дня' : 'Отметь дни, когда хочешь отдыхать'}, до <b>${esc(rr.dlText)}</b> — бот постарается учесть. В один день могут отдыхать не все: если мест нет (🔒), можно подать заявление</p>
         <div class="grlist2">${chips}</div>
         <div class="form"><label>Комментарий для админа (необязательно)<textarea id="grNote" rows="2" maxlength="300" placeholder="Например: в пятницу могу только с 16:00">${esc(grForm.note != null ? grForm.note : (mineD && mineD.note) || '')}</textarea></label></div>
         <button class="btn" id="${pv ? 'grPrevSave' : 'grSave'}">${mineD && mineD.done ? 'Сохранить изменения' : 'Сохранить'}</button>
@@ -2041,7 +2041,7 @@ const binds = {
     const keepNote = () => { const n = document.getElementById('grNote'); if (n) grForm.note = n.value; };
     document.querySelectorAll('[data-grday]').forEach(b => b.onclick = () => {
       const x = b.dataset.grday;
-      if (!grSel.has(x) && grSel.size + ((grD.days || []).filter(y => y.z === 'ok' || y.z === 'wait').length) >= (grD.maxOff || 3)) return toast(grD.maxOff === 1 ? 'Можно взять только один выходной — сб или вс' : 'Можно не больше 3 выходных в неделю');
+      if (!grSel.has(x) && grSel.size + ((grD.days || []).filter(y => y.z === 'ok' || y.z === 'wait').length) >= (grD.maxOff || 3)) return toast(grD.maxOff === 2 ? 'Выходной можно взять только в сб или вс' : 'Можно не больше 3 выходных в неделю');
       if (grSel.has(x)) grSel.delete(x); else grSel.add(x);
       try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
       keepNote(); render();
