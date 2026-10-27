@@ -416,7 +416,7 @@ function header() {
     <div class="hello">Привет, ${esc(first)} 👋</div></div>`;
 }
 function tabsList() {
-  if (me.orderer && !me.isAdmin) return [['order', 'Заказ']];
+  if (me.orderer && !me.isAdmin) return me.grWe && me.grTab ? [['order', 'Заказ'], ['grafik', 'График']] : [['order', 'Заказ']];   // Азиз: сб/вс в Рассвете
   const tasksLbl = 'Задачи' + (me.openTasks ? `<span class="tabcount">${me.openTasks}</span>` : '');
   const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['tk', 'Техкарты']];
   if (me.isAdmin || (me.grTab && !me.isOwner && (me.statuses || {})[me.name] !== 'управляющий')) t.splice(5, 0, ['grafik', 'График']);   // владельцам и управляющим не нужна
@@ -1619,7 +1619,7 @@ const views = {
       const wdL = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'long', timeZone: 'UTC' });
       const dnL = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' });
       const places = n => n + ' ' + (n % 10 === 1 && n % 100 !== 11 ? 'место' : [2, 3, 4].indexOf(n % 10) >= 0 && (n % 100 < 12 || n % 100 > 14) ? 'места' : 'мест');
-      const chips = range(rr.from, rr.to).map(x => {
+      const chips = range(rr.from, rr.to).filter(x => pv || !d.maxOff || d.maxOff >= 3 || (days || []).some(y => y.date === x)).map(x => {
         const i = info(x), mine = grSel.has(x), left = i.left == null ? null : Math.max(0, i.left - (mine ? 1 : 0));
         let btn;
         if (!mine && (i.z === 'ok' || i.z === 'wait')) btn = `<button class="grbtn ${i.z === 'ok' ? 'on' : 'busy'}" data-grz-st="${i.z}">${i.z === 'ok' ? '✅ Одобрено' : '⏳ Заявление'}</button>`;
@@ -1631,7 +1631,7 @@ const views = {
       const zForm = grZ ? card(`<h2>📝 Заявление на выходной</h2><p class="sub">${esc(dayS(grZ))} уже занят — в один день могут отдыхать не все, иначе некому работать. Если очень нужно — напиши причину, админ решит и бот пришлёт ответ</p>
         <div class="form"><textarea id="grZr" rows="3" maxlength="300" placeholder="Например: запись к врачу, экзамен"></textarea></div>
         <div class="two"><button class="btn" id="grZSend">Отправить админу</button><button class="btn soft" id="grZNo">Отмена</button></div>`) : '';
-      out += card(`${pv ? '<p class="sub" style="margin:0 0 8px;color:var(--warm)">👀 Предпросмотр — так увидят сотрудники. Нажимать можно, но ничего не сохранится</p>' : ''}<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(rr.from)}–${dmS(rr.to)}. Отметь дни, когда хочешь отдыхать, до <b>${esc(rr.dlText)}</b> — бот постарается учесть. В один день могут отдыхать не все: если мест нет (🔒), можно подать заявление</p>
+      out += card(`${pv ? '<p class="sub" style="margin:0 0 8px;color:var(--warm)">👀 Предпросмотр — так увидят сотрудники. Нажимать можно, но ничего не сохранится</p>' : ''}<h2>🗓 Желаемые выходные</h2><p class="sub">График на ${dmS(rr.from)}–${dmS(rr.to)}. ${!pv && d.maxOff === 1 ? 'Обычно ты выходишь в субботу и воскресенье. Если нужен выходной — отметь один день' : 'Отметь дни, когда хочешь отдыхать'}, до <b>${esc(rr.dlText)}</b> — бот постарается учесть. В один день могут отдыхать не все: если мест нет (🔒), можно подать заявление</p>
         <div class="grlist2">${chips}</div>
         <div class="form"><label>Комментарий для админа (необязательно)<textarea id="grNote" rows="2" maxlength="300" placeholder="Например: в пятницу могу только с 16:00">${esc(grForm.note != null ? grForm.note : (mineD && mineD.note) || '')}</textarea></label></div>
         <button class="btn" id="${pv ? 'grPrevSave' : 'grSave'}">${mineD && mineD.done ? 'Сохранить изменения' : 'Сохранить'}</button>
@@ -2041,7 +2041,7 @@ const binds = {
     const keepNote = () => { const n = document.getElementById('grNote'); if (n) grForm.note = n.value; };
     document.querySelectorAll('[data-grday]').forEach(b => b.onclick = () => {
       const x = b.dataset.grday;
-      if (!grSel.has(x) && grSel.size + ((grD.days || []).filter(y => y.z === 'ok' || y.z === 'wait').length) >= 3) return toast('Можно не больше 3 выходных в неделю');
+      if (!grSel.has(x) && grSel.size + ((grD.days || []).filter(y => y.z === 'ok' || y.z === 'wait').length) >= (grD.maxOff || 3)) return toast(grD.maxOff === 1 ? 'Можно взять только один выходной — сб или вс' : 'Можно не больше 3 выходных в неделю');
       if (grSel.has(x)) grSel.delete(x); else grSel.add(x);
       try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
       keepNote(); render();
