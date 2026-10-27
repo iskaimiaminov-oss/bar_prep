@@ -1654,7 +1654,9 @@ const views = {
       const zl = (d.answers || []).flatMap(w => (w.z || []).map(z => `<br>📝 ${esc(w.name)}, ${dmS(z.date)}: ${z.st === 'ok' ? '✅ одобрено' : z.st === 'no' ? '❌ отказано' : '⏳ ждёт решения'} — «${esc(z.r)}»`)).join('');
       out += card(`<h2>🗓 Выходные ${dmS(r.from)}–${dmS(r.to)}</h2><p class="sub">${r.open ? 'Сбор идёт до ' + esc(r.dlText) + ', потом бот сам составит график и внесёт в таблицу' : 'Сбор закончен'}. Справа — сколько выходных взяли из скольки можно</p>
         <div class="grlist2">${rows}</div>
-        ${(d.wait || []).length ? `<p class="sub" style="margin-top:10px">Ещё не ответили: ${esc(d.wait.join(', '))}</p>` : ''}${zl ? `<p class="sub" style="margin-top:6px">Заявления:${zl}</p>` : ''}`);
+        ${(d.wait || []).length ? `<p class="sub" style="margin-top:10px">Ещё не ответили: ${esc(d.wait.join(', '))}</p>` : ''}${zl ? `<p class="sub" style="margin-top:6px">Заявления:${zl}</p>` : ''}
+        ${r.open && !d.job ? `<p class="sub" style="margin-top:10px">Не хочешь ждать — составь по тем выходным, что уже отметили. Сбор не закроется: кто не ответил — 5/2, отмечать можно до ${esc(r.dlText)}. Тогда бот сам пересоставит с новыми выходными, а раньше — нажми ещё раз</p>
+          <button class="btn" id="grNowBtn">${d.draft && d.draft.from === r.from && d.draft.status === 'done' ? '🔄 Пересоставить с новыми выходными' : '🧩 Составить график сейчас'}</button>` : ''}`);
     } else out += empty('🗓', 'Сбор выходных сейчас не идёт', 'Каждую пятницу в 12:00 бот сам открывает сбор на следующую неделю (до субботы 18:00), потом сам составляет график и вносит в таблицу');
     // админ: начать сбор на следующую неделю раньше пятницы
     const nx = d.next;
@@ -2102,6 +2104,8 @@ const binds = {
       if (!(await confirmBox('Разослать команде просьбу отметить желаемые выходные?'))) return;
       act(st, 'grStart', { from: v('grFrom'), to: v('grTo'), deadline: v('grDl') }, 'Разослал команде 📨');
     };
+    const nb = document.getElementById('grNowBtn');
+    if (nb) nb.onclick = async () => { if (await confirmBox('Составить график по уже отмеченным выходным? Сбор не закроется')) act(nb, 'grGenNow', {}); };
     const sn = document.getElementById('grStartNext');
     if (sn) sn.onclick = async () => {
       const nx = grD.next || {};
