@@ -1662,6 +1662,7 @@ const views = {
     } else if (r && !r.open && !d.isAdmin) out += empty('🗓', 'Сбор выходных закончен', `Пожелания на ${dmS(r.from)}–${dmS(r.to)} собраны — скоро будет график`);
     else if (!d.isAdmin) out += empty('🗓', 'Сейчас сбор выходных не идёт', 'Когда админ начнёт составлять график, бот пришлёт сообщение — отметишь дни здесь или кнопками в чате');
     if (!d.isAdmin) return out;
+    if (!d.canEdit) out += `<p class="sub" style="margin:0 0 8px">👀 График — только просмотр: составляет и меняет админ</p>`;
     // админ: по дням — сколько выходных занято (из скольки можно) и кто взял
     if (r) {
       const wdL = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'long', timeZone: 'UTC' });
@@ -1672,12 +1673,12 @@ const views = {
       out += card(`<h2>🗓 Выходные ${dmS(r.from)}–${dmS(r.to)}</h2><p class="sub">${r.open ? 'Сбор идёт до ' + esc(r.dlText) + ', потом бот сам составит график и внесёт в таблицу' : 'Сбор закончен'}. Справа — сколько выходных взяли из скольки можно</p>
         <div class="grlist2">${rows}</div>
         ${(d.wait || []).length ? `<p class="sub" style="margin-top:10px">Ещё не ответили: ${esc(d.wait.join(', '))}</p>` : ''}${zl ? `<p class="sub" style="margin-top:6px">Заявления:${zl}</p>` : ''}
-        ${r.open && !d.job ? `<p class="sub" style="margin-top:10px">Не хочешь ждать — составь по тем выходным, что уже отметили. Сбор не закроется: кто не ответил — 5/2, отмечать можно до ${esc(r.dlText)}. Тогда бот сам пересоставит с новыми выходными, а раньше — нажми ещё раз</p>
+        ${r.open && !d.job && d.canEdit ? `<p class="sub" style="margin-top:10px">Не хочешь ждать — составь по тем выходным, что уже отметили. Сбор не закроется: кто не ответил — 5/2, отмечать можно до ${esc(r.dlText)}. Тогда бот сам пересоставит с новыми выходными, а раньше — нажми ещё раз</p>
           <button class="btn" id="grNowBtn">${d.draft && d.draft.from === r.from && d.draft.status === 'done' ? '🔄 Пересоставить с новыми выходными' : '🧩 Составить график сейчас'}</button>` : ''}`);
     } else out += empty('🗓', 'Сбор выходных сейчас не идёт', 'Каждую пятницу в 12:00 бот сам открывает сбор на следующую неделю (до субботы 18:00), потом сам составляет график и вносит в таблицу');
     // админ: начать сбор на следующую неделю раньше пятницы
     const nx = d.next;
-    if (nx && !nx.err) out += card(`<h2>🚀 Сбор на ${dmS(nx.from)}–${dmS(nx.to)}</h2><p class="sub">Не ждать пятницы: бот сразу напишет команде, примет выходные до ${esc(nx.dlText)}, напомнит и сам составит график. В пятницу второй сбор не откроется</p><button class="btn" id="grStartNext">🗓 Начать сбор на след. неделю</button>`);
+    if (nx && !nx.err && d.canEdit) out += card(`<h2>🚀 Сбор на ${dmS(nx.from)}–${dmS(nx.to)}</h2><p class="sub">Не ждать пятницы: бот сразу напишет команде, примет выходные до ${esc(nx.dlText)}, напомнит и сам составит график. В пятницу второй сбор не откроется</p><button class="btn" id="grStartNext">🗓 Начать сбор на след. неделю</button>`);
     // админ: составленный график
     const dr = d.draft;
     if (d.job) out += card(`<h2>⏳ Составляю график…</h2><p class="sub">Это займёт пару минут — пришлю в бот</p><button class="btn soft" id="grReload">🔄 Обновить</button>`);
@@ -1688,9 +1689,9 @@ const views = {
         ${dr.notes.length ? `<p class="sub">${dr.notes.map(x => '🕖 ' + esc(x)).join('<br>')}</p>` : ''}
         ${dr.issues.length ? `<h3>⚠️ Не сходится с правилами (${dr.issues.length})</h3><ul class="grlist">${dr.issues.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="sub">✅ Все правила соблюдены</p>'}
         ${(dr.urls || [{ sheet: dr.sheet, url: dr.url }]).map(u => `<button class="btn soft" data-grurl="${esc(u.url)}">📄 Открыть «${esc(u.sheet)}»</button>`).join('')}
-        ${dr.status === 'new' ? `<div class="two"><button class="btn" id="grApprove">✅ Утвердить</button><button class="btn soft" id="grManual">✍️ Поправлю сам</button></div>` : ''}
+        ${dr.status === 'new' && d.canEdit ? `<div class="two"><button class="btn" id="grApprove">✅ Утвердить</button><button class="btn soft" id="grManual">✍️ Поправлю сам</button></div>` : ''}
         ${dr.status === 'done' ? `<p class="sub" style="margin-top:10px">${dr.sent > 0 ? '📤 Команде разослан ' + esc(new Date(dr.sent).toLocaleString('ru-RU', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) : '📤 ' + esc(dr.sendNote || '')}</p>
-          <div class="two"><button class="btn" id="grSend">📤 ${dr.sent > 0 ? 'Разослать ещё раз' : 'Разослать команде'}</button><button class="btn soft" id="grRegen">🔄 Пересоставить</button></div>` : ''}`);
+          ${d.canEdit ? `<div class="two"><button class="btn" id="grSend">📤 ${dr.sent > 0 ? 'Разослать ещё раз' : 'Разослать команде'}</button><button class="btn soft" id="grRegen">🔄 Пересоставить</button></div>` : ''}` : ''}`);
     }
     return out;
   },
