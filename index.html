@@ -1524,12 +1524,12 @@ const views = {
       return `<span class="days ${n <= 1 ? 'today' : n <= 2 ? 'soon' : ''}">${n <= 1 ? 'последний день' : 'ещё ' + n + ' ' + pl(n, 'день', 'дня', 'дней')}</span>`;
     };
     const dd = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-    const row = x => `<div class="batch"><div class="pname"><b>${esc(x.name)} · ${fmt(x.q)} ${esc(x.unit)}</b><span>${x.state === 'f' ? 'заморозил(а)' : 'от'} ${esc(dd(x.made))}${x.by ? ' · ' + esc(x.by) : ''}</span>
+    const row = x => `<div class="batch"><div class="pname"><b>${esc(x.name)}${x.state === 'f' ? ' · ' + fmt(x.q) + ' ' + esc(x.unit) : ''}</b><span>${x.state === 'f' ? 'заморозил(а)' : 'от'} ${esc(dd(x.made))}${x.by ? ' · ' + esc(x.by) : ''}${x.ext ? ' · продлевали ' + x.ext + ' р.' : ''}</span>
         ${ed ? `<div class="acts" style="margin-top:8px">${x.state === 'f'
           ? `<button class="tkbtn" data-bthaw="${esc(x.pid)}">❄️ Разморозить</button>`
-          : `<button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`}</div>` : ''}</div>${badge(x)}</div>`;
+          : `${x.exp && x.exp < now ? `<button class="tkbtn" data-balive="${esc(x.id)}">👌 Ещё живая</button>` : ''}<button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`}</div>` : ''}</div>${badge(x)}</div>`;
     const work = d.batches.filter(x => x.state === 'w'), frozen = d.batches.filter(x => x.state === 'f');
-    let out = card(`<h2>🧊 В работе</h2><p class="sub">${work.length ? 'Сверху — то, что истекает раньше. Остатки обновляются сами по подсчёту на закрытии' : 'Партии появятся, когда сотрудники отметят сваренные заготовки'}</p>${work.map(row).join('')}`);
+    let out = card(`<h2>🧊 В работе</h2><p class="sub">${work.length ? 'Сверху — то, что истекает раньше. Срок вышел, а заготовка ещё живая — жми «👌 Ещё живая», проверим завтра' : 'Партии появятся, когда сотрудники отметят сваренные заготовки'}</p>${work.map(row).join('')}`);
     if (d.frz.length || frozen.length) {
       out += card(`<h2>❄️ В морозилке</h2><p class="sub">${frozen.length ? 'Срок хранения после разморозки считается с дня разморозки' : 'Пока пусто'}</p>${frozen.map(row).join('')}` +
         (ed ? d.frz.map(p => `<button class="btn soft" data-bfreeze="${esc(p.id)}" style="padding:11px">＋ Положить в морозилку: ${esc(p.name)}</button>`).join('') : ''));
@@ -1879,8 +1879,13 @@ const binds = {
       act({ action: 'batchDone', data: { id: x.id } }, 'Убрано ✅');
     });
     document.querySelectorAll('[data-bwaste]').forEach(b => b.onclick = async () => {
-      const x = find(b.dataset.bwaste); if (!x || !(await confirmBox(`Списать ${x.name} (${fmt(x.q)} ${x.unit})? Попадёт в отчёт о списаниях.`))) return;
-      act({ action: 'batchDone', data: { id: x.id, waste: true } }, 'Списано 🗑');
+      const x = find(b.dataset.bwaste); if (!x) return;
+      const q = await askQty('🗑 Списать: ' + x.name, 'Сколько выкинули? Попадёт в отчёт о списаниях, партия уберётся из списка', '', x.unit, 'Списать');
+      if (q != null) act({ action: 'batchDone', data: { id: x.id, waste: true, q } }, 'Списано 🗑');
+    });
+    document.querySelectorAll('[data-balive]').forEach(b => b.onclick = async () => {
+      const x = find(b.dataset.balive); if (!x || !(await confirmBox(`${x.name} ещё не испортилась? Проверим снова завтра.`))) return;
+      act({ action: 'batchAlive', data: { id: x.id } }, 'Ок, проверим завтра 👌');
     });
     document.querySelectorAll('[data-bthaw]').forEach(b => b.onclick = async () => {
       const pid = b.dataset.bthaw, all = fridgeData.batches.filter(x => x.pid === pid && x.state === 'f'), tot = all.reduce((a, x) => a + x.q, 0);
