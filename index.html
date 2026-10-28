@@ -111,6 +111,18 @@
 
   .check{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer}
   .check:last-child{border-bottom:0}
+  .reg{border-bottom:1px solid var(--line)}
+  .reg:last-child{border-bottom:0}
+  .reg summary{list-style:none;cursor:pointer;padding:13px 0;font-weight:600;display:flex;justify-content:space-between;gap:10px}
+  .reg summary::-webkit-details-marker{display:none}
+  .reg summary::after{content:'›';color:var(--muted);transition:.15s}
+  .reg[open] summary::after{transform:rotate(90deg)}
+  .reg .rt{padding:0 0 14px;font-size:15px;line-height:1.5}
+  .reg .rt h3{font-size:15px;margin:14px 0 4px}
+  .reg .rt p{margin:0 0 6px}
+  .reg .rt li{margin:0 0 4px 18px}
+  .reg mark{background:var(--warm-soft);color:inherit;border-radius:4px;padding:0 2px}
+  .skd{display:block;color:var(--muted);font-size:13px;font-weight:400;margin-top:2px}
   .box{width:28px;height:28px;border-radius:9px;border:2px solid var(--olive);display:grid;place-items:center;flex:0 0 auto;color:transparent;font-weight:700;transition:.15s}
   .check.on .box{background:var(--forest);border-color:var(--forest);color:var(--cream)}
   .check.made{cursor:default}
@@ -418,7 +430,7 @@ function header() {
 function tabsList() {
   if (me.orderer && !me.isAdmin) return me.grWe && me.grTab ? [['order', 'Заказ'], ['grafik', 'График']] : [['order', 'Заказ']];   // Азиз: сб/вс в Рассвете
   const tasksLbl = 'Задачи' + (me.openTasks ? `<span class="tabcount">${me.openTasks}</span>` : '');
-  const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['tk', 'Техкарты']];
+  const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['tk', 'Техкарты'], ['regs', 'Регламент']];
   if (me.isAdmin || (me.grTab && !me.isOwner && (me.statuses || {})[me.name] !== 'управляющий')) t.splice(5, 0, ['grafik', 'График']);   // владельцам и управляющим не нужна
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
   else if (me.isViewer) t.push(['history', 'История']);   // админ-наблюдатель: всё как у сотрудника + история закрытий
@@ -817,7 +829,7 @@ const hmS = m => Math.floor(m / 60) % 24 + ':' + String(m % 60).padStart(2, '0')
 function homeExtraHtml(d) {
   let out = '';
   const today = me.today.date;
-  out += guCard();
+  out += skCard() + guCard();
   // мои смены на 7 дней (у владельца бота скрыто — мешает)
   if (d.week && d.week.length && !me.isAdmin) {
     const mySwap = date => (d.swaps || []).find(w => w.mine && w.date === date);
@@ -903,7 +915,7 @@ function bindHomeExtra() {
     });
     const pb = document.getElementById('probBtn'); if (pb) pb.onclick = () => openProblem(() => getHome(true).then(fill));
     const db = document.getElementById('dishBtn'); if (db) db.onclick = openDish;
-    bindGu();
+    bindGu(); bindSk();
   };
   if (homeData) fill(homeData); else box.innerHTML = card('<div class="wip">Загружаю…</div>');
   getHome(!!homeData).then(fill).catch(() => {});
@@ -1186,7 +1198,12 @@ const HELP = [
     '«Ты сегодня не закрываешь» — закрытие доступно тем, у кого по графику смена до 22:00 и позже.',
     'Фото не загружается — проверь интернет и подожди, пока пропадёт кружок загрузки на фото.',
     'Вписал не тот итоговый выход — нажми «✏️ Выход» у этой заготовки во вкладке «Сегодня» (можно только в тот же день).',
-    'Ошибся или что-то непонятно — напиши администратору.']]
+    'Ошибся или что-то непонятно — напиши администратору.']],
+  ['📦', 'Передача склада и регламент', [
+    'Утренняя смена перед уходом сдаёт склад вечерней: во вкладке «Сегодня» отметь пункты чек-листа уборки склада и нажми «📦 Сдать склад». В 15:00 бот напомнит.',
+    'Что не в порядке — не отмечай, можно оставить комментарий.',
+    'Вечерняя смена получит сообщение: проверь склад и нажми «✅ Принял(а)» или «⚠️ Есть замечания» и напиши, что не так — замечание уйдёт управляющему.',
+    'Все правила бара — во вкладке «Регламент». Там есть поиск: например, «опоздание» или «форма».']]
 ];
 function openHelp() {
   closeSheet();
@@ -2150,6 +2167,87 @@ const binds = {
     });
   }
 };
+
+// ===== РЕГЛАМЕНТ: документы из Google Docs, поиск по тексту =====
+let regsData = null, regsQ = '';
+function regHtml(text, q) {
+  const hl = s => { let h = esc(s); if (q) h = h.replace(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), m => `<mark>${m}</mark>`); return h; };
+  return text.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    if (/^[*•\-]\s+/.test(l)) return `<li>${hl(l.replace(/^[*•\-]\s+/, ''))}</li>`;
+    if (l.length < 90 && /^(☐\s*)?\d+(\.\d+)*\.?\s+\S/.test(l) && !/[.;:]$/.test(l)) return `<h3>${hl(l)}</h3>`;
+    return `<p>${hl(l)}</p>`;
+  }).join('');
+}
+function regsList() {
+  const q = regsQ.trim().toLowerCase(), docs = (regsData || []).filter(x => !q || (x.title + '\n' + x.text).toLowerCase().indexOf(q) >= 0);
+  if (!docs.length) return '<p class="sub">Ничего не нашёл</p>';
+  return docs.map(x => `<details class="reg" ${q ? 'open' : ''}><summary>${esc(x.title)}</summary><div class="rt">${x.err ? `<p style="color:var(--danger)">${esc(x.err)}</p>` : regHtml(x.text, q)}</div></details>`).join('');
+}
+views.regs = async function () {
+  if (!regsData) regsData = (await call('regs')).docs;
+  return card(`<h2>📜 Регламент</h2><p class="sub">Правила бара. Тексты берутся из Google-документов — если их поправят, здесь обновится само.</p>
+    <div class="form"><input id="regQ" type="search" placeholder="🔍 Поиск по регламентам" value="${esc(regsQ)}"></div>
+    ${me.isAdmin ? `<button class="btn soft" id="regRefresh" style="margin:8px 0 0;padding:11px">🔄 Обновить из документов</button>` : ''}
+    <div id="regList" style="margin-top:6px">${regsList()}</div>`);
+};
+binds.regs = function () {
+  const qi = document.getElementById('regQ'), box = document.getElementById('regList');
+  if (qi) qi.oninput = () => { regsQ = qi.value; box.innerHTML = regsList(); };
+  const rf = document.getElementById('regRefresh');
+  if (rf) rf.onclick = async () => {
+    rf.disabled = true; rf.textContent = 'Читаю документы…';
+    try { regsData = (await call('regs', { fresh: true })).docs; toast('Регламенты обновлены ✅'); render(); }
+    catch (e) { toast(e.message); rf.disabled = false; rf.textContent = '🔄 Обновить из документов'; }
+  };
+};
+
+// ===== ПЕРЕДАЧА СКЛАДА: утро сдаёт по чек-листу, вечер принимает =====
+const tm = ts => new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tashkent' });
+function skCard() {
+  const k = me.sk; if (!k) return '';
+  const s = k.s, acc = s && s.acc;
+  const sum = s ? `<p class="sub">Сдал(а) <b>${esc(s.by)}</b> в ${tm(s.at)} · ${s.miss.length ? '⚠️ не в порядке: ' + s.miss.map(esc).join(', ') : '✅ все пункты в порядке'}${s.note ? '<br>💬 ' + esc(s.note) : ''}</p>` : '';
+  const accLine = acc ? `<div class="status" style="${acc.note ? 'background:var(--warm-soft);color:var(--warm)' : ''}"><span class="big">${acc.note ? '⚠️' : '✅'}</span>Принял(а) ${esc(acc.by)} в ${tm(acc.at)}${acc.note ? ': ' + esc(acc.note) : ''}</div>` : '';
+  if (k.role === 'give' && !s) return card(`<h2>📦 Передача склада</h2><p class="sub">Перед уходом пройди чек-лист уборки склада и сдай склад вечерней смене${k.take.length ? ' (' + k.take.map(esc).join(', ') + ')' : ''}. Что не в порядке — не отмечай.</p>` +
+    k.items.map((it, i) => `<div class="check" data-sk="${i}"><div class="box">✓</div><div><b>${esc(it.t)}</b>${it.d ? `<span class="skd">${esc(it.d)}</span>` : ''}</div></div>`).join('') +
+    `<div class="form"><textarea id="skNote" rows="2" placeholder="Комментарий для вечерней смены (необязательно)"></textarea></div><button class="btn" id="skGive">📦 Сдать склад</button>`);
+  if (k.role === 'take' && !s) return card(`<h2>📦 Передача склада</h2><p class="sub">Утренняя смена${k.give.length ? ' (' + k.give.map(esc).join(', ') + ')' : ''} ещё не сдала склад. Как сдаст — придёт сообщение.</p>`);
+  if (k.role === 'take' && !acc) return card(`<h2>📦 Приём склада</h2>${sum}<p class="sub">Проверь склад и подтверди.</p>
+    <button class="btn" id="skOk">✅ Принял(а)</button><button class="btn soft" id="skBad">⚠️ Есть замечания</button>`);
+  return card(`<h2>📦 Передача склада</h2>${sum}${accLine || (s ? '<p class="sub">Вечерняя смена ещё не подтвердила.</p>' : '')}`);
+}
+function bindSk() {
+  const k = me.sk; if (!k) return;
+  document.querySelectorAll('[data-sk]').forEach(el => el.onclick = () => el.classList.toggle('on'));
+  const reload = async () => { me = await call('me'); render(); };
+  const g = document.getElementById('skGive');
+  if (g) g.onclick = async () => {
+    const checks = [...document.querySelectorAll('[data-sk].on')].map(el => +el.dataset.sk), miss = k.items.length - checks.length;
+    if (miss && !(await confirmBox(`Не отмечено пунктов: ${miss}. Сдать склад с пометкой «не в порядке»?`))) return;
+    g.disabled = true; g.textContent = 'Отправляю…';
+    try { await call('skGive', { checks: checks, note: document.getElementById('skNote').value }); haptic('success'); toast('Склад сдан — вечерняя смена получила сообщение ✅'); await reload(); }
+    catch (e) { toast(e.message); g.disabled = false; g.textContent = '📦 Сдать склад'; }
+  };
+  const ok = document.getElementById('skOk');
+  if (ok) ok.onclick = async () => { ok.disabled = true; try { toast((await call('skAcc', { ok: true })).msg); haptic('success'); await reload(); } catch (e) { toast(e.message); ok.disabled = false; } };
+  const bad = document.getElementById('skBad');
+  if (bad) bad.onclick = () => {
+    closeSheet();
+    const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+    wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>⚠️ Что не в порядке?</h2><p class="sub" style="margin-top:4px">Передам управляющему и утренней смене.</p>
+      <div class="form"><textarea id="skBadT" rows="3" placeholder="Например: морозильник грязный, коробки в проходе"></textarea></div>
+      <button class="btn" id="skBadSend">Отправить</button><button class="btn soft" id="closeSheet">Отмена</button></div>`;
+    document.body.appendChild(wrap);
+    wrap.querySelector('#closeSheet').onclick = closeSheet;
+    wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+    const b = wrap.querySelector('#skBadSend');
+    b.onclick = async () => {
+      const note = wrap.querySelector('#skBadT').value.trim(); if (!note) return toast('Напиши, что не так');
+      b.disabled = true;
+      try { toast((await call('skAcc', { ok: false, note: note })).msg); closeSheet(); await reload(); } catch (e) { toast(e.message); b.disabled = false; }
+    };
+  };
+}
 
 // ---- клавиатура: «Готово», тап мимо поля, Enter → следующее поле ----
 function initKeyboard() {
