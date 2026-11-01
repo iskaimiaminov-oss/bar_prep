@@ -440,6 +440,10 @@ render.seq = 0;
 async function render() {
   const tabs = tabsList().map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('');
   const my = ++render.seq;
+  // та же вкладка — после перерисовки остаёмся на том же месте экрана (иначе прыгает наверх)
+  const keep = tab === render.lastTab && !render.toTop, y = window.scrollY;
+  render.lastTab = tab; render.toTop = false;
+  if (keep) app.style.minHeight = app.offsetHeight + 'px';
   app.innerHTML = header() + `<div class="tabs-wrap"><div class="tabs">${tabs}</div></div><main id="main"></main>`;
   app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { if (b.dataset.tab === tab) return; tab = b.dataset.tab; lastResult = null; render(); window.scrollTo(0, 0); });
   const hb = document.getElementById('helpBtn'); if (hb) hb.onclick = openHelp;
@@ -461,6 +465,8 @@ async function render() {
   if (my !== render.seq) return;           // пока грузилось, переключили вкладку
   main.innerHTML = body;
   (binds[tab] || (() => {}))();
+  app.style.minHeight = '';
+  if (keep) window.scrollTo(0, y);
 }
 
 let tkP = null, cfgP = null, namesP = null;
@@ -2126,7 +2132,7 @@ const binds = {
     const po = document.getElementById('grPrevOn');
     if (po) po.onclick = async () => {
       po.disabled = true; po.textContent = 'Считаю лимиты по таблице…';
-      try { grPrev = await call('grPreview'); grSel = null; render(); window.scrollTo(0, 0); } catch (e) { toast(e.message); po.disabled = false; po.textContent = '👀 Как видят сотрудники'; }
+      try { grPrev = await call('grPreview'); grSel = null; render.toTop = true; render(); window.scrollTo(0, 0); } catch (e) { toast(e.message); po.disabled = false; po.textContent = '👀 Как видят сотрудники'; }
     };
     const pf = document.getElementById('grPrevOff'); if (pf) pf.onclick = () => { grPrev = null; grSel = null; render(); };
     const ps = document.getElementById('grPrevSave'); if (ps) ps.onclick = () => toast('Это предпросмотр — у сотрудника тут сохранится 🌴');
