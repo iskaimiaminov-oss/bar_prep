@@ -1996,7 +1996,7 @@ const binds = {
       readOff();
       const exclude = document.getElementById('exclude').value.split(',').map(s => s.trim()).filter(Boolean);
       e.target.disabled = true;
-      try { await call('saveStaff', { off: cfg.off, extra: cfg.extra || [], exclude }); cfg.exclude = exclude; toast('Сохранено ✅'); haptic('success'); }
+      try { const r = await call('saveStaff', { off: cfg.off, extra: cfg.extra || [], exclude }); cfg.exclude = exclude; if (r && r.schedule) { cfg.schedule = r.schedule; cfg.extra = r.extra || []; render(); } toast('Сохранено ✅'); haptic('success'); }
       catch (err) { toast(err.message); }
       e.target.disabled = false;
     };
