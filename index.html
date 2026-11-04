@@ -1593,13 +1593,7 @@ const views = {
         <label class="switch"><input type="checkbox" data-f="frz" ${p.frz ? 'checked' : ''}> ❄️ Замораживаем (часть кладут в морозилку)</label>
       </div>`).join('');
     const cl = cfg.checklist || [];
-    let usage = '';
-    try { const u = (await call('usage')).items;
-      usage = card(`<h2>📈 Расход заготовок</h2><p class="sub">Сколько уходит за день — по истории подсчётов и отметкам «сварил»</p>` + u.map(x => `<div class="strow"><b>${esc(x.name)}</b>
-        <div class="sub" style="margin:4px 0 0">${x.n < 3 ? 'Мало данных — нужно ещё несколько закрытий' : `будни ≈ <b>${x.wd != null ? fmt(x.wd) + ' ' + esc(x.unit) : '—'}</b> · пт–вс ≈ <b>${x.we != null ? fmt(x.we) + ' ' + esc(x.unit) : '—'}</b> · норма ${fmt(x.norm)} ${esc(x.unit)}`}</div>
-        ${x.hint && x.n >= 3 ? `<div style="margin-top:6px;color:var(--warm);font-size:14px">💡 ${esc(x.hint)}</div>` : ''}</div>`).join(''));
-    } catch (e) {}
-    return usage + card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. Техкарта — рецепт из таблицы, выход для пересчёта берётся из строки «Выход» в техкарте. Срок хранения — для напоминаний в «Холодильнике»; пусто — берётся из техкарты (серая цифра).</p>
+    return card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. Техкарта — рецепт из таблицы, выход для пересчёта берётся из строки «Выход» в техкарте. Срок хранения — для напоминаний в «Холодильнике»; пусто — берётся из техкарты (серая цифра).</p>
       ${rows || ''}<button class="btn soft" id="add">+ Добавить заготовку</button>`) +
       card(`<h2>Чек-лист закрытия</h2><p class="sub">Пункты, которые отмечают на закрытии смены</p><div id="cl">` +
         cl.map((t, k) => `<div class="cl-row edit" style="padding:8px;margin-bottom:8px"><input data-cl value="${esc(t)}" placeholder="Например: почистить кофемашину"><button class="x" data-cldel="${k}">×</button></div>`).join('') +
