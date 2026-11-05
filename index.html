@@ -1082,6 +1082,16 @@ function askDate(title, sub, max, okText) {
     wrap.querySelector('#askOk').onclick = () => { if (!inp.value) { toast('Выбери дату с наклейки'); return; } if (inp.value > max) { toast('Дата не может быть из будущего'); return; } done(inp.value); };
   });
 }
+// На закрытии посчитали больше, чем в партиях: спрашиваем дату с наклейки и заводим партию. «Отмена» — пропустить заготовку
+async function askExtras(list) {
+  const today = new Date(Date.now() + 5 * 36e5).toISOString().slice(0, 10);
+  for (const x of list || []) {
+    const date = await askDate('🏷 ' + x.name + ': лишние ' + fmt(x.q) + ' ' + x.unit, 'Посчитали больше, чем отмечено в партиях. Какая дата на наклейке?', today, 'Завести партию');
+    if (!date) continue;
+    try { await call('batchExtra', { pid: x.pid, date }); fridgeData = null; toast('Партия заведена ✅'); }
+    catch (e) { toast(e.message); }
+  }
+}
 function askQty(title, sub, def, unit, okText) {
   return new Promise(res => {
     closeSheet();
@@ -1172,7 +1182,8 @@ const HELP = [
     'Если дата на наклейке другая, бот исправит партию и посчитает срок от наклейки, управляющему придёт уведомление.',
     '«Закончилась» — нажми, когда партию использовали.',
     '«🗑 Списать» — если пришлось выбросить: впиши, сколько выкинули. Без количества списать нельзя. Списанное попадает в отчёт.',
-    'В 9:00 бот пишет в группу, что истекает сегодня и завтра.',
+    'В 9:00 бот пишет в группу, что истекает сегодня и завтра. Если просрочку не разобрали, в 13:00 придёт напоминание, а когда всё проверено — «✅ Заготовки проверены».',
+    'Посчитали на закрытии больше, чем в партиях (от 0,2 л/кг), — бот спросит дату с наклейки и заведёт партию со сроком.',
     'Морозилка (тыквенное пюре): кнопки «Разморозить» и «Положить в морозилку». После разморозки пюре хранится 3 дня — бот считает срок с дня разморозки.']],
   ['🗓', 'График и выходные', [
     'Каждую пятницу в 12:00 бот пишет в личку: отметь, в какие дни следующей недели хочешь отдыхать. Принимаем до субботы 18:00.',
@@ -1264,7 +1275,7 @@ function tkShelf(cards, tk) { const c = (cards || []).find(x => x.id === tk), m 
 
 function needRow(i) {
   return `<div class="need"><div class="dot">${esc(String(i.name).trim()[0] || '•').toUpperCase()}</div>
-    <div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}${i.frozen > 0 ? ' · ❄️ в морозилке ' + fmt(i.frozen) : ''}</span></div>
+    <div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}${i.res ? ' с запасом' : ''}${i.frozen > 0 ? ' · ❄️ в морозилке ' + fmt(i.frozen) : ''}</span></div>
     <div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div></div>`;
 }
 
@@ -1859,7 +1870,7 @@ const binds = {
       }
       const cashWhy = cashChk && cashChk.why ? { r: cashChk.why, note: (cashChk.note || '').trim() } : null, cashFirst = cashChk ? cashChk.first : null;
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); }
+      try { lastResult = await call('count', { values, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
