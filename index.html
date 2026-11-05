@@ -1067,6 +1067,21 @@ function bindShift() {
 }
 
 // Окошко «сколько?» снизу экрана. Возвращает число или null, если закрыли
+function askDate(title, sub, max, okText) {
+  return new Promise(res => {
+    closeSheet();
+    const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+    wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>${esc(title)}</h2>${sub ? `<p class="sub" style="margin-top:4px">${sub}</p>` : ''}
+      <div class="form"><label>Дата на наклейке<input id="askd" type="date" max="${esc(max)}"></label></div>
+      <button class="btn" id="askOk">${esc(okText || 'Готово')}</button><button class="btn soft" id="askNo">Отмена</button></div>`;
+    document.body.appendChild(wrap);
+    const done = v => { closeSheet(); res(v); };
+    const inp = wrap.querySelector('#askd');
+    wrap.querySelector('#askNo').onclick = () => done(null);
+    wrap.onclick = e => { if (e.target === wrap) done(null); };
+    wrap.querySelector('#askOk').onclick = () => { if (!inp.value) { toast('Выбери дату с наклейки'); return; } if (inp.value > max) { toast('Дата не может быть из будущего'); return; } done(inp.value); };
+  });
+}
 function askQty(title, sub, def, unit, okText) {
   return new Promise(res => {
     closeSheet();
@@ -1152,7 +1167,9 @@ const HELP = [
   ['🧊', 'Холодильник', [
     'Здесь видно каждую партию заготовок и сколько дней ей осталось. Сверху — то, что истекает раньше.',
     '«Последний день» — используйте в первую очередь. Заготовка ещё отличная — можно сразу нажать «👌 Ещё живая», срок продлится на день.',
-    '«Срок истёк» — проверь заготовку. Ещё нормальная — нажми «👌 Ещё живая»: срок продлится на день, завтра проверь снова. Испортилась — «🗑 Списать».',
+    '«Срок истёк» — проверь заготовку. Ещё нормальная — нажми «👌 Ещё живая» и выбери дату с наклейки: срок продлится на день, завтра проверь снова. Испортилась — «🗑 Списать».',
+    '«Ещё живая» можно нажать раз в день и не больше 3 раз на партию, потом продлевает только управляющий.',
+    'Если дата на наклейке другая, бот исправит партию и посчитает срок от наклейки, управляющему придёт уведомление.',
     '«Закончилась» — нажми, когда партию использовали.',
     '«🗑 Списать» — если пришлось выбросить: впиши, сколько выкинули. Без количества списать нельзя. Списанное попадает в отчёт.',
     'В 9:00 бот пишет в группу, что истекает сегодня и завтра.',
@@ -1542,7 +1559,7 @@ const views = {
     const row = x => `<div class="batch"><div class="pname"><b>${esc(x.name)}${x.state === 'f' ? ' · ' + fmt(x.q) + ' ' + esc(x.unit) : ''}</b><span>${x.state === 'f' ? 'заморозил(а)' : 'от'} ${esc(dd(x.made))}${x.by ? ' · ' + esc(x.by) : ''}${x.ext ? ' · продлевали ' + x.ext + ' р.' : ''}</span>
         ${ed ? `<div class="acts" style="margin-top:8px">${x.state === 'f'
           ? `<button class="tkbtn" data-bthaw="${esc(x.pid)}">❄️ Разморозить</button>`
-          : `${x.exp && x.exp - now < 864e5 ? `<button class="tkbtn" data-balive="${esc(x.id)}">👌 Ещё живая</button>` : ''}<button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`}</div>` : ''}</div>${badge(x)}</div>`;
+          : `${x.exp && x.exp - now < 864e5 ? (x.aliveBlock ? `<span class="sub" style="width:100%">${x.aliveBlock === 'limit' ? 'Продлили 3 раза: дальше решает управляющий' : 'Сегодня уже продлили, следующий раз завтра'}</span>` : `<button class="tkbtn" data-balive="${esc(x.id)}">👌 Ещё живая</button>`) : ''}<button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`}</div>` : ''}</div>${badge(x)}</div>`;
     const work = d.batches.filter(x => x.state === 'w'), frozen = d.batches.filter(x => x.state === 'f');
     let out = card(`<h2>🧊 В работе</h2><p class="sub">${work.length ? 'Сверху — то, что истекает раньше. Последний день или срок вышел, а заготовка ещё живая — жми «👌 Ещё живая», проверим завтра' : 'Партии появятся, когда сотрудники отметят сваренные заготовки'}</p>${work.map(row).join('')}`);
     if (d.frz.length || frozen.length) {
@@ -1934,8 +1951,9 @@ const binds = {
       if (q != null) act({ action: 'batchDone', data: { id: x.id, waste: true, q } }, 'Списано 🗑');
     });
     document.querySelectorAll('[data-balive]').forEach(b => b.onclick = async () => {
-      const x = find(b.dataset.balive); if (!x || !(await confirmBox(`${x.name} ещё не испортилась? Проверим снова завтра.`))) return;
-      act({ action: 'batchAlive', data: { id: x.id } }, 'Ок, проверим завтра 👌');
+      const x = find(b.dataset.balive); if (!x) return;
+      const tz = ts => new Date(ts + 5 * 36e5).toISOString().slice(0, 10), date = await askDate('👌 Ещё живая: ' + x.name, 'В боте партия от ' + esc(new Date(x.made).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })) + '. Посмотри на наклейку и выбери дату с неё. Для размороженной — дату разморозки', tz(Date.now()), 'Подтвердить');
+      if (date) act({ action: 'batchAlive', data: { id: x.id, date } }, date === tz(x.made) ? 'Ок, проверим завтра 👌' : 'Дату исправили по наклейке ✅');
     });
     document.querySelectorAll('[data-bthaw]').forEach(b => b.onclick = async () => {
       const pid = b.dataset.bthaw, all = fridgeData.batches.filter(x => x.pid === pid && x.state === 'f'), tot = all.reduce((a, x) => a + x.q, 0);
