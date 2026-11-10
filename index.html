@@ -1200,15 +1200,17 @@ const HELP = [
     'О расходе от 500 000 сум управляющие узнают сразу. Все операции и отчёты закрытий сохраняются в Google-таблицу.']],
   ['🧊', 'Холодильник', [
     'Здесь видно каждую партию заготовок и сколько дней ей осталось. Сверху — то, что истекает раньше.',
-    '«Последний день» — используйте в первую очередь. Заготовка ещё отличная — можно сразу нажать «👌 Ещё живая», срок продлится на день.',
-    '«Срок истёк» — проверь заготовку. Ещё нормальная — нажми «👌 Ещё живая» и выбери дату с наклейки: срок продлится на день, завтра проверь снова. Испортилась — «🗑 Списать».',
-    '«Ещё живая» можно нажать раз в день и не больше 3 раз на партию, потом продлевает только управляющий.',
+    '«Последний день» — используйте в первую очередь.',
+    '«Срок истёк» — проверь партию именно от той даты, что написана в боте. Ещё нормальная — нажми «👌 Ещё живая» и выбери дату с наклейки: срок продлится на день, завтра проверь снова. Испортилась — «🗑 Списать».',
+    'Кнопка «👌 Ещё живая» есть только у партий с истёкшим сроком. Нажать её можно раз в день и не больше 3 раз на партию, потом продлевает только управляющий.',
     'Если дата на наклейке новее, чем в боте, бот попросит перепроверить: не стоит ли в холодильнике старая партия. Старой нет — бот поправит дату по наклейке, старую посчитает закончившейся, управляющему придёт уведомление.',
     'Если дата на наклейке старше, бот просто исправит партию и посчитает срок от наклейки.',
-    '«Закончилась» — нажми, когда партию использовали.',
+    '«Закончилась» — нажми, когда партию использовали, или если партии от этой даты в холодильнике нет.',
     '«🗑 Списать» — если пришлось выбросить: впиши, сколько выкинули. Без количества списать нельзя. Списанное попадает в отчёт.',
-    'В 9:00 бот пишет в группу, что истекло и что истекает сегодня и завтра. Проверьте просрочку до 13:00: «Ещё живая», «Закончилась» или «Списать».',
-    'В 13:00 бот сам списывает просрочку из утреннего списка, которую никто не проверил, и пишет об этом в группу. Морозилку бот сам не списывает.',
+    'В 9:00 бот пишет в группу, у каких партий истёк срок, дата партии выделена. Проверьте именно эту партию до 16:00: «Ещё живая», «Списать» или «Закончилась», если партии от этой даты нет. В 15:30 бот напомнит ещё раз.',
+    'В 16:00 бот сам списывает просрочку из утреннего списка, которую никто не отметил, и пишет об этом в группу. Морозилку бот сам не списывает, только напоминает.',
+    'На закрытии, пока не ответишь про списанное ботом, остатки не внести: «✅ Вылили» или «↩️ Вернуть», если заготовка ещё живая.',
+    'Осталось на закрытии меньше 0,15 л/кг (150 мл/г), а у штучных — 0: на следующий день в 14:20 бот сам уберёт эту партию как закончившуюся (не в списания) и поставит заготовку в «надо сварить».',
     'Бот списал, а заготовка на месте и ещё живая — в блоке «🗑 Списано ботом» нажми «↩️ Вернуть». Вернуть можно до конца следующего дня, партия уйдёт из отчёта списаний. Потом отметь её как обычно.',
     'Сварил(а), разморозил(а) или убрал(а) в морозилку — бот покажет, что написать на наклейке. Наклеил(а) — жми «✅ Промаркировал(а)». Не нажал(а) — через 30 минут бот напомнит в личку, а в Холодильнике у партии будет «🏷 Не промаркирована».',
     'Посчитали на закрытии больше, чем в партиях (от 0,2 л/кг), — бот спросит дату с наклейки и заведёт партию со сроком. Если эту заготовку недавно списал бот, сначала предложит вернуть списанную партию.',
@@ -1251,9 +1253,10 @@ const HELP = [
     'Раз в 2 недели в понедельник бот подводит в группе итоги: кто больше всех сварил.']],
   ['⏰', 'Что и когда присылает бот', [
     '08:00 — заказ заготовок от Яндекса и Узума (в группу).',
-    '09:00 — сроки хранения в холодильнике и поздравления с днём рождения (в группу); раз в 3 дня — проверка дат на стикерах (в группу) и напоминание о задачах (в личку).',
+    '09:00 — просроченные заготовки в холодильнике и поздравления с днём рождения (в группу); раз в 3 дня — проверка дат на стикерах (в группу) и напоминание о задачах (в личку).',
     '14:20 — что сварить сегодня (в группу).',
-    '15:30 — что осталось вечерней смене (в группу).',
+    '15:30 — что осталось вечерней смене и повторная проверка просрочки (в группу).',
+    '16:00 — автосписание непроверенной просрочки (в группу).',
     '15:00 — утренней смене: сдать склад вечерней (в личку).',
     '18:30 — напоминание вечерней смене про несваренное (в личку).',
     'Пятница 12:00 — отметить желаемые выходные на следующую неделю (в личку), принимаем до субботы 18:00.',
@@ -1443,8 +1446,12 @@ const views = {
       <label>💵 Пересчитай кассу — сколько наличных по факту</label><input data-cash="cf" inputmode="text" enterkeyhint="next" placeholder="Например: 1 150 000" value="${cv('cf')}">
       <label>✉️ Пересчитай конверт — сколько в нём сейчас</label><input data-cash="env" inputmode="text" enterkeyhint="done" placeholder="Например: 2 350 000" value="${cv('env')}"></div>
       <p class="sub" id="cashHint" style="margin-top:10px"></p><div id="cashChk"></div>`);
-    return clHtml + phHtml + cashHtml + card(`<h2>Остатки заготовок</h2>${last}
-      <div class="progress"><i id="prog" style="width:0"></i></div><p class="sub" id="progt" style="margin:0 0 4px"></p>${rows}`) +
+    const offs = me.offAsk || [], ddm = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    const offHtml = offs.length ? card(`<h2>🗑 Бот списал — вылили?</h2><p class="sub">Эти заготовки бот списал по сроку. Вылили — жми «✅ Вылили». Заготовка на месте и ещё живая — «↩️ Вернуть». Пока не ответишь по каждой, остатки не внести</p>` +
+      offs.map(x => `<div class="batch"><div class="pname"><b>${esc(x.name)} · ${fmt(x.q)} ${esc(x.unit)}</b><span>партия от ${esc(ddm(x.made))}</span>
+        <div class="acts" style="margin-top:8px"><button class="tkbtn" data-offok="${esc(x.id)}">✅ Вылили</button><button class="tkbtn" data-offret="${esc(x.id)}">↩️ Вернуть</button></div></div></div>`).join('')) : '';
+    return clHtml + phHtml + cashHtml + offHtml + card(`<h2>Остатки заготовок</h2>${last}${offs.length ? '<p class="sub" style="color:var(--danger)">Сначала ответь про списанные ботом заготовки выше ☝️</p>' : ''}
+      <div style="${offs.length ? 'opacity:.4;pointer-events:none' : ''}"><div class="progress"><i id="prog" style="width:0"></i></div><p class="sub" id="progt" style="margin:0 0 4px"></p>${rows}</div>`) +
       `<div class="dock"><button class="btn" id="send">${cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'}</button></div>`;
   },
 
@@ -1597,17 +1604,17 @@ const views = {
     const dd = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
     const row = x => `<div class="batch"><div class="pname"><b>${esc(x.name)}${x.state === 'f' ? ' · ' + fmt(x.q) + ' ' + esc(x.unit) : ''}</b><span>${x.state === 'f' ? 'заморозил(а)' : 'от'} ${esc(dd(x.made))}${x.by ? ' · ' + esc(x.by) : ''}${x.ext ? ' · продлевали ' + x.ext + ' р.' : ''}</span>${x.mark ? `<span style="color:var(--danger)">🏷 Не промаркирована</span>` : ''}
         ${ed ? `<div class="acts" style="margin-top:8px">${x.state === 'f'
-          ? `${x.mark ? `<button class="tkbtn" data-bmark="${esc(x.id)}">🏷 Промаркировал(а)</button>` : ''}<button class="tkbtn" data-bthaw="${esc(x.pid)}">❄️ Разморозить</button>`
-          : `${x.mark ? `<button class="tkbtn" data-bmark="${esc(x.id)}">🏷 Промаркировал(а)</button>` : ''}${x.exp && x.exp - now < 864e5 ? (x.aliveBlock ? `<span class="sub" style="width:100%">${x.aliveBlock === 'limit' ? 'Продлили 3 раза: дальше решает управляющий' : 'Сегодня уже продлили, следующий раз завтра'}</span>` : `<button class="tkbtn" data-balive="${esc(x.id)}">👌 Ещё живая</button>`) : ''}<button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`}</div>` : ''}</div>${badge(x)}</div>`;
+          ? `${x.mark ? `<button class="tkbtn" data-bmark="${esc(x.id)}">🏷 Промаркировал(а)</button>` : ''}<button class="tkbtn" data-bthaw="${esc(x.pid)}">❄️ Разморозить</button><button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`
+          : `${x.mark ? `<button class="tkbtn" data-bmark="${esc(x.id)}">🏷 Промаркировал(а)</button>` : ''}${x.exp && x.exp < now ? (x.aliveBlock ? `<span class="sub" style="width:100%">${x.aliveBlock === 'limit' ? 'Продлили 3 раза: дальше решает управляющий' : 'Сегодня уже продлили, следующий раз завтра'}</span>` : `<button class="tkbtn" data-balive="${esc(x.id)}">👌 Ещё живая</button>`) : ''}<button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`}</div>` : ''}</div>${badge(x)}</div>`;
     const work = d.batches.filter(x => x.state === 'w'), frozen = d.batches.filter(x => x.state === 'f');
-    let out = card(`<h2>🧊 В работе</h2><p class="sub">${work.length ? 'Сверху — то, что истекает раньше. Последний день или срок вышел, а заготовка ещё живая — жми «👌 Ещё живая», проверим завтра' : 'Партии появятся, когда сотрудники отметят сваренные заготовки'}</p>${work.map(row).join('')}`);
+    let out = card(`<h2>🧊 В работе</h2><p class="sub">${work.length ? 'Сверху — то, что истекает раньше. Срок вышел, а заготовка ещё живая — жми «👌 Ещё живая», проверим завтра. Партии от этой даты нет — «Закончилась»' : 'Партии появятся, когда сотрудники отметят сваренные заготовки'}</p>${work.map(row).join('')}`);
     if (d.frz.length || frozen.length) {
       out += card(`<h2>❄️ В морозилке</h2><p class="sub">${frozen.length ? 'Срок хранения после разморозки считается с дня разморозки' : 'Пока пусто'}</p>${frozen.map(row).join('')}` +
         (ed ? d.frz.map(p => `<button class="btn soft" data-bfreeze="${esc(p.id)}" style="padding:11px">＋ Положить в морозилку: ${esc(p.name)}</button>`).join('') : ''));
     }
     const offs = d.autoOff || [];
     if (offs.length) {
-      out += card(`<h2>🗑 Списано ботом</h2><p class="sub">Просрочку до 13:00 никто не проверил, и бот списал её сам. Заготовку не выбросили и она ещё живая — жми «↩️ Вернуть», партия вернётся и уйдёт из отчёта списаний</p>` +
+      out += card(`<h2>🗑 Списано ботом</h2><p class="sub">Просрочку до 16:00 никто не проверил, и бот списал её сам. Заготовку не выбросили и она ещё живая — жми «↩️ Вернуть», партия вернётся и уйдёт из отчёта списаний</p>` +
         offs.map(x => `<div class="batch"><div class="pname"><b>${esc(x.name)} · ${fmt(x.q)} ${esc(x.unit)}</b><span>от ${esc(dd(x.made))} · вернуть можно до конца ${esc(dd(x.till))}</span>
           ${ed ? `<div class="acts" style="margin-top:8px"><button class="tkbtn" data-bret="${esc(x.id)}">↩️ Вернуть</button></div>` : ''}</div></div>`).join(''));
     }
@@ -1881,7 +1888,15 @@ const binds = {
     });
     upd();
     syncBtn();
+    const offDone = async (fn, msg) => { try { await fn(); fridgeData = null; haptic('success'); toast(msg); me = await call('me'); render(); } catch (e) { toast(e.message); } };
+    document.querySelectorAll('[data-offok]').forEach(b => b.onclick = () => offDone(() => call('autoOffOk', { id: b.dataset.offok }), 'Отмечено: вылили 🗑'));
+    document.querySelectorAll('[data-offret]').forEach(b => b.onclick = async () => {
+      const x = (me.offAsk || []).find(y => y.id === b.dataset.offret); if (!x) return;
+      if (!(await confirmBox(`Вернуть ${x.name} (${fmt(x.q)} ${x.unit})? Партия вернётся в холодильник и уйдёт из отчёта списаний.`))) return;
+      offDone(() => call('batchReturn', { id: x.id }), 'Партия возвращена ↩️');
+    });
     btn.onclick = async () => {
+      if ((me.offAsk || []).length) { toast('Сначала ответь про списанные ботом заготовки'); haptic('error'); const o = document.querySelector('[data-offok]'); if (o) o.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
       const values = {}; let emptyN = 0, bad = 0;
       inputs.forEach(i => { const v = toNum(i.value); if (v === '') emptyN++; else if (isNaN(v) || v < 0) bad++; else values[i.dataset.id] = v; });
       if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
