@@ -1082,10 +1082,34 @@ function askDate(title, sub, max, okText) {
     wrap.querySelector('#askOk').onclick = () => { if (!inp.value) { toast('Выбери дату с наклейки'); return; } if (inp.value > max) { toast('Дата не может быть из будущего'); return; } done(inp.value); };
   });
 }
+// Только что сварили / разморозили / убрали в морозилку: что написать на наклейке и кнопка «Промаркировал(а)»
+function askLabel(list) {
+  if (!list || !list.length) return Promise.resolve();
+  const dd = ts => new Date(ts).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+  return new Promise(res => {
+    closeSheet();
+    const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+    wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>🏷 Промаркируй заготовку</h2><p class="sub" style="margin-top:4px">Напиши на наклейке и приклей на тару:</p>
+      ${list.map(x => `<div class="batch"><div class="pname"><b>${esc(x.name)}${x.state === 'f' ? ' ❄️' : ''}</b><span>${x.state === 'f' ? 'В морозилку' : 'Сварено'}: ${esc(dd(x.made))}${x.exp ? ' · годна до ' + esc(dd(x.exp)) : ''}</span></div></div>`).join('')}
+      <button class="btn" id="lbOk">✅ Промаркировал(а)</button><button class="btn soft" id="lbNo">Позже</button></div>`;
+    document.body.appendChild(wrap);
+    const done = () => { closeSheet(); res(); };
+    wrap.querySelector('#lbNo').onclick = () => { toast('Через 30 минут бот напомнит 🏷'); done(); };
+    wrap.onclick = e => { if (e.target === wrap) done(); };
+    wrap.querySelector('#lbOk').onclick = async () => {
+      try { await call('batchMark', { ids: list.map(x => x.id) }); fridgeData = null; haptic('success'); toast('Промаркировано 🏷'); } catch (e) { toast(e.message); }
+      done(); if (tab === 'fridge') render();
+    };
+  });
+}
 // На закрытии посчитали больше, чем в партиях: спрашиваем дату с наклейки и заводим партию. «Отмена» — пропустить заготовку
 async function askExtras(list) {
   const today = new Date(Date.now() + 5 * 36e5).toISOString().slice(0, 10);
   for (const x of list || []) {
+    if (x.back && await confirmBox(`${x.name}: посчитали больше, чем в партиях. Бот списал партию от ${new Date(x.back.made).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}, а она, похоже, на месте. Вернуть её?`)) {
+      try { await call('batchReturn', { id: x.back.id }); fridgeData = null; toast('Партия возвращена ↩️'); } catch (e) { toast(e.message); }
+      continue;
+    }
     const date = await askDate('🏷 ' + x.name + ': лишние ' + fmt(x.q) + ' ' + x.unit, 'Посчитали больше, чем отмечено в партиях. Какая дата на наклейке?', today, 'Завести партию');
     if (!date) continue;
     try { await call('batchExtra', { pid: x.pid, date }); fridgeData = null; toast('Партия заведена ✅'); }
@@ -1179,11 +1203,15 @@ const HELP = [
     '«Последний день» — используйте в первую очередь. Заготовка ещё отличная — можно сразу нажать «👌 Ещё живая», срок продлится на день.',
     '«Срок истёк» — проверь заготовку. Ещё нормальная — нажми «👌 Ещё живая» и выбери дату с наклейки: срок продлится на день, завтра проверь снова. Испортилась — «🗑 Списать».',
     '«Ещё живая» можно нажать раз в день и не больше 3 раз на партию, потом продлевает только управляющий.',
-    'Если дата на наклейке другая, бот исправит партию и посчитает срок от наклейки, управляющему придёт уведомление.',
+    'Если дата на наклейке новее, чем в боте, бот попросит перепроверить: не стоит ли в холодильнике старая партия. Старой нет — бот поправит дату по наклейке, старую посчитает закончившейся, управляющему придёт уведомление.',
+    'Если дата на наклейке старше, бот просто исправит партию и посчитает срок от наклейки.',
     '«Закончилась» — нажми, когда партию использовали.',
     '«🗑 Списать» — если пришлось выбросить: впиши, сколько выкинули. Без количества списать нельзя. Списанное попадает в отчёт.',
-    'В 9:00 бот пишет в группу, что истекает сегодня и завтра. Если просрочку не разобрали, в 13:00 придёт напоминание, а когда всё проверено — «✅ Заготовки проверены».',
-    'Посчитали на закрытии больше, чем в партиях (от 0,2 л/кг), — бот спросит дату с наклейки и заведёт партию со сроком.',
+    'В 9:00 бот пишет в группу, что истекло и что истекает сегодня и завтра. Проверьте просрочку до 13:00: «Ещё живая», «Закончилась» или «Списать».',
+    'В 13:00 бот сам списывает просрочку из утреннего списка, которую никто не проверил, и пишет об этом в группу. Морозилку бот сам не списывает.',
+    'Бот списал, а заготовка на месте и ещё живая — в блоке «🗑 Списано ботом» нажми «↩️ Вернуть». Вернуть можно до конца следующего дня, партия уйдёт из отчёта списаний. Потом отметь её как обычно.',
+    'Сварил(а), разморозил(а) или убрал(а) в морозилку — бот покажет, что написать на наклейке. Наклеил(а) — жми «✅ Промаркировал(а)». Не нажал(а) — через 30 минут бот напомнит в личку, а в Холодильнике у партии будет «🏷 Не промаркирована».',
+    'Посчитали на закрытии больше, чем в партиях (от 0,2 л/кг), — бот спросит дату с наклейки и заведёт партию со сроком. Если эту заготовку недавно списал бот, сначала предложит вернуть списанную партию.',
     'Морозилка (тыквенное пюре): кнопки «Разморозить» и «Положить в морозилку». После разморозки пюре хранится 3 дня — бот считает срок с дня разморозки.']],
   ['🗓', 'График и выходные', [
     'Каждую пятницу в 12:00 бот пишет в личку: отметь, в какие дни следующей недели хочешь отдыхать. Принимаем до субботы 18:00.',
@@ -1567,15 +1595,21 @@ const views = {
       return `<span class="days ${n <= 1 ? 'today' : n <= 2 ? 'soon' : ''}">${n <= 1 ? 'последний день' : 'ещё ' + n + ' ' + pl(n, 'день', 'дня', 'дней')}</span>`;
     };
     const dd = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-    const row = x => `<div class="batch"><div class="pname"><b>${esc(x.name)}${x.state === 'f' ? ' · ' + fmt(x.q) + ' ' + esc(x.unit) : ''}</b><span>${x.state === 'f' ? 'заморозил(а)' : 'от'} ${esc(dd(x.made))}${x.by ? ' · ' + esc(x.by) : ''}${x.ext ? ' · продлевали ' + x.ext + ' р.' : ''}</span>
+    const row = x => `<div class="batch"><div class="pname"><b>${esc(x.name)}${x.state === 'f' ? ' · ' + fmt(x.q) + ' ' + esc(x.unit) : ''}</b><span>${x.state === 'f' ? 'заморозил(а)' : 'от'} ${esc(dd(x.made))}${x.by ? ' · ' + esc(x.by) : ''}${x.ext ? ' · продлевали ' + x.ext + ' р.' : ''}</span>${x.mark ? `<span style="color:var(--danger)">🏷 Не промаркирована</span>` : ''}
         ${ed ? `<div class="acts" style="margin-top:8px">${x.state === 'f'
-          ? `<button class="tkbtn" data-bthaw="${esc(x.pid)}">❄️ Разморозить</button>`
-          : `${x.exp && x.exp - now < 864e5 ? (x.aliveBlock ? `<span class="sub" style="width:100%">${x.aliveBlock === 'limit' ? 'Продлили 3 раза: дальше решает управляющий' : 'Сегодня уже продлили, следующий раз завтра'}</span>` : `<button class="tkbtn" data-balive="${esc(x.id)}">👌 Ещё живая</button>`) : ''}<button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`}</div>` : ''}</div>${badge(x)}</div>`;
+          ? `${x.mark ? `<button class="tkbtn" data-bmark="${esc(x.id)}">🏷 Промаркировал(а)</button>` : ''}<button class="tkbtn" data-bthaw="${esc(x.pid)}">❄️ Разморозить</button>`
+          : `${x.mark ? `<button class="tkbtn" data-bmark="${esc(x.id)}">🏷 Промаркировал(а)</button>` : ''}${x.exp && x.exp - now < 864e5 ? (x.aliveBlock ? `<span class="sub" style="width:100%">${x.aliveBlock === 'limit' ? 'Продлили 3 раза: дальше решает управляющий' : 'Сегодня уже продлили, следующий раз завтра'}</span>` : `<button class="tkbtn" data-balive="${esc(x.id)}">👌 Ещё живая</button>`) : ''}<button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`}</div>` : ''}</div>${badge(x)}</div>`;
     const work = d.batches.filter(x => x.state === 'w'), frozen = d.batches.filter(x => x.state === 'f');
     let out = card(`<h2>🧊 В работе</h2><p class="sub">${work.length ? 'Сверху — то, что истекает раньше. Последний день или срок вышел, а заготовка ещё живая — жми «👌 Ещё живая», проверим завтра' : 'Партии появятся, когда сотрудники отметят сваренные заготовки'}</p>${work.map(row).join('')}`);
     if (d.frz.length || frozen.length) {
       out += card(`<h2>❄️ В морозилке</h2><p class="sub">${frozen.length ? 'Срок хранения после разморозки считается с дня разморозки' : 'Пока пусто'}</p>${frozen.map(row).join('')}` +
         (ed ? d.frz.map(p => `<button class="btn soft" data-bfreeze="${esc(p.id)}" style="padding:11px">＋ Положить в морозилку: ${esc(p.name)}</button>`).join('') : ''));
+    }
+    const offs = d.autoOff || [];
+    if (offs.length) {
+      out += card(`<h2>🗑 Списано ботом</h2><p class="sub">Просрочку до 13:00 никто не проверил, и бот списал её сам. Заготовку не выбросили и она ещё живая — жми «↩️ Вернуть», партия вернётся и уйдёт из отчёта списаний</p>` +
+        offs.map(x => `<div class="batch"><div class="pname"><b>${esc(x.name)} · ${fmt(x.q)} ${esc(x.unit)}</b><span>от ${esc(dd(x.made))} · вернуть можно до конца ${esc(dd(x.till))}</span>
+          ${ed ? `<div class="acts" style="margin-top:8px"><button class="tkbtn" data-bret="${esc(x.id)}">↩️ Вернуть</button></div>` : ''}</div></div>`).join(''));
     }
     return out;
   },
@@ -1884,7 +1918,7 @@ const binds = {
       const it = me.today.items.find(x => x.pid === b.dataset.thaw); if (!it) return;
       const q = await askQty('❄️ Разморозил: ' + it.name, 'В морозилке ' + fmt(it.frozen) + ' ' + esc(it.unit) + '. Срок хранения пойдёт с сегодняшнего дня', toNum(b.dataset.amt), it.unit, 'Отметить разморозку');
       if (q == null) return;
-      try { await call('thaw', { pid: it.pid, q, today: true }); sel.delete(it.pid); fridgeData = null; haptic('success'); toast('Отмечено ❄️'); me = await call('me'); render(); }
+      try { const r = await call('thaw', { pid: it.pid, q, today: true }); sel.delete(it.pid); fridgeData = null; haptic('success'); toast('Отмечено ❄️'); me = await call('me'); render(); askLabel(r && r.label); }
       catch (er) { toast(er.message); }
     });
     document.querySelectorAll('[data-fz]').forEach(inp => inp.oninput = () => { fzv[inp.dataset.fz] = inp.value; });
@@ -1942,16 +1976,22 @@ const binds = {
         freezes[pid] = v;
       }
       btn.disabled = true; btn.textContent = 'Отмечаю…';
-      try { await call('made', { pids: [...sel], yields: yields, freezes: freezes }); [...sel].forEach(pid => { delete yv[pid]; delete fzv[pid]; }); sel.clear(); fridgeData = null; haptic('success'); toast('Молодец! 💪'); me = await call('me'); render(); }
+      try { const r = await call('made', { pids: [...sel], yields: yields, freezes: freezes }); [...sel].forEach(pid => { delete yv[pid]; delete fzv[pid]; }); sel.clear(); fridgeData = null; haptic('success'); toast('Молодец! 💪'); me = await call('me'); render(); askLabel(r && r.label); }
       catch (e) { toast(e.message); sync(); }
     };
   },
   fridge() {
     const act = async (payload, okMsg) => {
-      try { await call(payload.action, payload.data); fridgeData = null; haptic('success'); toast(okMsg); me = await call('me'); render(); }
+      try { const r = await call(payload.action, payload.data); fridgeData = null; haptic('success'); toast(okMsg); me = await call('me'); render(); askLabel(r && r.label); }
       catch (e) { toast(e.message); }
     };
     const find = id => fridgeData.batches.find(x => x.id === id);
+    document.querySelectorAll('[data-bmark]').forEach(b => b.onclick = () => act({ action: 'batchMark', data: { ids: [b.dataset.bmark] } }, 'Промаркировано 🏷'));
+    document.querySelectorAll('[data-bret]').forEach(b => b.onclick = async () => {
+      const x = (fridgeData.autoOff || []).find(y => y.id === b.dataset.bret); if (!x) return;
+      if (!(await confirmBox(`Вернуть ${x.name} (${fmt(x.q)} ${x.unit})? Партия вернётся в холодильник и уйдёт из отчёта списаний. Потом отметь её: «Ещё живая» с датой с наклейки или «Закончилась».`))) return;
+      act({ action: 'batchReturn', data: { id: x.id } }, 'Партия возвращена ↩️');
+    });
     document.querySelectorAll('[data-bused]').forEach(b => b.onclick = async () => {
       const x = find(b.dataset.bused); if (!x || !(await confirmBox(`${x.name} закончилась? Партия уберётся из списка.`))) return;
       act({ action: 'batchDone', data: { id: x.id } }, 'Убрано ✅');
@@ -1964,7 +2004,17 @@ const binds = {
     document.querySelectorAll('[data-balive]').forEach(b => b.onclick = async () => {
       const x = find(b.dataset.balive); if (!x) return;
       const tz = ts => new Date(ts + 5 * 36e5).toISOString().slice(0, 10), date = await askDate('👌 Ещё живая: ' + x.name, 'В боте партия от ' + esc(new Date(x.made).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })) + '. Посмотри на наклейку и выбери дату с неё. Для размороженной — дату разморозки', tz(Date.now()), 'Подтвердить');
-      if (date) act({ action: 'batchAlive', data: { id: x.id, date } }, date === tz(x.made) ? 'Ок, проверим завтра 👌' : 'Дату исправили по наклейке ✅');
+      if (!date) return;
+      try {
+        const r = await call('batchAlive', { id: x.id, date });
+        if (r && r.check) {
+          const was = new Date(r.was).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }), now2 = new Date(date + 'T12:00:00+05:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+          const sure = await confirmBox(`На наклейке ${now2}, а в боте эта партия от ${was} — она старше. Перепроверь холодильник: нет ли там ещё ${x.name} от ${was}? Нажми «ОК», если старой нет: бот поправит дату, а старую партию посчитает закончившейся.`);
+          if (!sure) { toast('Тогда отметь старую партию: «Ещё живая» с её датой, «Закончилась» или «Списать»'); return; }
+          await call('batchAlive', { id: x.id, date, sure: true });
+        }
+        fridgeData = null; haptic('success'); toast(date === tz(x.made) ? 'Ок, проверим завтра 👌' : 'Дату исправили по наклейке ✅'); me = await call('me'); render();
+      } catch (e) { toast(e.message); }
     });
     document.querySelectorAll('[data-bthaw]').forEach(b => b.onclick = async () => {
       const pid = b.dataset.bthaw, all = fridgeData.batches.filter(x => x.pid === pid && x.state === 'f'), tot = all.reduce((a, x) => a + x.q, 0);
