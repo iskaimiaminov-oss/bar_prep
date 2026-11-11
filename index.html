@@ -353,7 +353,24 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp
 const fmt = x => String(Math.round(Number(x) * 100) / 100).replace('.', ',');
 const fmtTs = ts => { const d = new Date(ts); return d.toLocaleDateString('ru-RU',{day:'numeric',month:'long'}) + ', ' + d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); };
 const norm2 = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-const toNum = v => { const s = String(v).trim().replace(',', '.'); return s === '' ? '' : Number(s); };
+const toNum = v => { const s = String(v).replace(/\s/g, '').replace(',', '.'); return s === '' ? '' : Number(s); };
+// Вписали граммы/мл вместо кг/л (1600 вместо 1,6): в кг/л больше 50 не бывает — спрашиваем «Ты имел в виду 1,6 кг?».
+// list: [{ v, unit, name, inp }]. ОК — число в поле и в list поправится; Отмена — false, человек исправит сам
+const UNIT_BIG = /^(л|l|литр\S*|кг|kg|килограмм\S*)$/i, BIG_MAX = 50;
+async function fixBig(list) {
+  for (const it of list) {
+    const u = String(it.unit || '').trim().replace(/\.$/, '');
+    if (!UNIT_BIG.test(u) || !(it.v > BIG_MAX)) continue;
+    const g = Math.round(it.v / 10) / 100;
+    if (!(await confirmBox(`${it.name ? it.name + ': ' : ''}${fmt(it.v)} ${u} — это слишком много. Ты имел в виду ${fmt(g)} ${u}?\n\nОК — исправлю на ${fmt(g)} ${u}. Отмена — поправишь сам(а).`))) {
+      if (it.inp) { const f = it.inp.closest('.field'); if (f) f.classList.add('bad'); it.inp.focus(); }
+      return false;
+    }
+    it.v = g;
+    if (it.inp) { it.inp.value = fmt(g); it.inp.dispatchEvent(new Event('input')); }
+  }
+  return true;
+}
 const ICONS = ['🍯','🍋','🫙','🧴','🍓','🌿','🥛','🍊','🫐','🍵'];
 const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % ICONS.length];
 
@@ -628,6 +645,9 @@ function openPickup() {
     wrap.querySelectorAll('[data-pk]').forEach(i => { const v = toNum(i.value); if (v === '') return; if (isNaN(v) || v < 0) bad++; else if (v > 0) items[i.dataset.pk] = v; });
     if (bad) return toast('Проверь числа');
     if (!Object.keys(items).length) return toast('Впиши, сколько забрал(а)');
+    const chk = Object.keys(items).map(pid => { const p = me.preps.find(x => x.id === pid) || {}; return { pid, v: items[pid], unit: p.unit, name: p.name, inp: wrap.querySelector(`[data-pk="${CSS.escape(pid)}"]`) }; });
+    if (!(await fixBig(chk))) return;
+    chk.forEach(c => items[c.pid] = c.v);
     ev.target.disabled = true;
     try { const r = await call('orderPickup', { items }); me.pickup = r.pickup; haptic('success'); toast('Отмечено, спасибо! 📦'); closeSheet(); render(); }
     catch (e) { toast(e.message); ev.target.disabled = false; }
@@ -1129,7 +1149,7 @@ function askQty(title, sub, def, unit, okText) {
     setTimeout(() => { inp.focus(); inp.select(); }, 60);
     wrap.querySelector('#askNo').onclick = () => done(null);
     wrap.onclick = e => { if (e.target === wrap) done(null); };
-    wrap.querySelector('#askOk').onclick = () => { const v = toNum(inp.value); if (v === '' || !(v > 0)) { toast('Впиши количество'); inp.focus(); return; } done(v); };
+    wrap.querySelector('#askOk').onclick = async () => { const v = toNum(inp.value); if (v === '' || !(v > 0)) { toast('Впиши количество'); inp.focus(); return; } const it = { v, unit, inp }; if (!(await fixBig([it]))) return; done(it.v); };
   });
 }
 
@@ -1200,6 +1220,8 @@ const HELP = [
     'О расходе от 500 000 сум управляющие узнают сразу. Все операции и отчёты закрытий сохраняются в Google-таблицу.']],
   ['🧊', 'Холодильник', [
     'Здесь видно каждую партию заготовок и сколько дней ей осталось. Сверху — то, что истекает раньше.',
+    'Под партией написано: дата, кто сварил(а) или разморозил(а) и сколько. Если часть уже ушла — ещё и сколько осталось. У старых партий количества может не быть.',
+    'Количество пиши в тех единицах, что стоят рядом с полем: 1,6 кг, а не 1600. Запятая или точка — без разницы. Впишешь больше 50 кг или л — бот спросит «Ты имел в виду 1,6 кг?»: «ОК» исправит, «Отмена» — поправишь сам(а).',
     '«Последний день» — используйте в первую очередь.',
     '«Срок истёк» — проверь партию именно от той даты, что написана в боте. Ещё нормальная — нажми «👌 Ещё живая» и выбери дату с наклейки: срок продлится на день, завтра проверь снова. Испортилась — «🗑 Списать».',
     'Кнопка «👌 Ещё живая» есть только у партий с истёкшим сроком. Нажать её можно раз в день и не больше 3 раз на партию, потом продлевает только управляющий.',
@@ -1605,7 +1627,7 @@ const views = {
       return `<span class="days ${n <= 1 ? 'today' : n <= 2 ? 'soon' : ''}">${n <= 1 ? 'последний день' : 'ещё ' + n + ' ' + pl(n, 'день', 'дня', 'дней')}</span>`;
     };
     const dd = ts => new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-    const row = x => `<div class="batch"><div class="pname"><b>${esc(x.name)}${x.state === 'f' ? ' · ' + fmt(x.q) + ' ' + esc(x.unit) : ''}</b><span>${x.state === 'f' ? 'заморозил(а)' : 'от'} ${esc(dd(x.made))}${x.by ? ' · ' + esc(x.by) : ''}${x.ext ? ' · продлевали ' + x.ext + ' р.' : ''}</span>${x.mark ? `<span style="color:var(--danger)">🏷 Не промаркирована</span>` : ''}
+    const row = x => `<div class="batch"><div class="pname"><b>${esc(x.name)}${x.state === 'f' ? ' · ' + fmt(x.q) + ' ' + esc(x.unit) : ''}</b><span>${esc(dd(x.made))} · ${x.state === 'f' ? 'заморозил(а)' : x.thaw ? 'разморозил(а)' : x.cnt ? 'завёл(а) на закрытии' : 'сварил(а)'} ${x.by ? esc(x.by) : '—'}${x.q0 && !(x.state === 'f' && Math.abs(x.q0 - x.q) < 0.001) ? ' · ' + (x.state === 'f' ? 'было ' : '') + fmt(x.q0) + ' ' + esc(x.unit) : ''}${x.state !== 'f' && (!x.q0 || Math.abs(x.q0 - x.q) > 0.001) ? ' · осталось ' + fmt(x.q) + ' ' + esc(x.unit) : ''}${x.ext ? ' · продлевали ' + x.ext + ' р.' : ''}</span>${x.mark ? `<span style="color:var(--danger)">🏷 Не промаркирована</span>` : ''}
         ${ed ? `<div class="acts" style="margin-top:8px">${x.state === 'f'
           ? `${x.mark ? `<button class="tkbtn" data-bmark="${esc(x.id)}">🏷 Промаркировал(а)</button>` : ''}<button class="tkbtn" data-bthaw="${esc(x.pid)}">❄️ Разморозить</button><button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`
           : `${x.mark ? `<button class="tkbtn" data-bmark="${esc(x.id)}">🏷 Промаркировал(а)</button>` : ''}${x.exp && x.exp < now ? (x.aliveBlock ? `<span class="sub" style="width:100%">${x.aliveBlock === 'limit' ? 'Продлили 3 раза: дальше решает управляющий' : 'Сегодня уже продлили, следующий раз завтра'}</span>` : `<button class="tkbtn" data-balive="${esc(x.id)}">👌 Ещё живая</button>`) : ''}<button class="tkbtn" data-bused="${esc(x.id)}">Закончилась</button><button class="tkbtn" data-bwaste="${esc(x.id)}" style="background:var(--warm-soft);color:var(--danger)">🗑 Списать</button>`}</div>` : ''}</div>${badge(x)}</div>`;
@@ -1905,6 +1927,9 @@ const binds = {
       const values = {}; let emptyN = 0, bad = 0;
       inputs.forEach(i => { const v = toNum(i.value); if (v === '') emptyN++; else if (isNaN(v) || v < 0) bad++; else values[i.dataset.id] = v; });
       if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
+      const chk = Object.keys(values).map(pid => { const p = me.preps.find(x => x.id === pid) || {}; return { pid, v: values[pid], unit: p.unit, name: p.name, inp: inputs.find(i => i.dataset.id === pid) }; });
+      if (!(await fixBig(chk))) { haptic('error'); return; }
+      chk.forEach(c => values[c.pid] = c.v);
       const cash = { ik: cashVal('ik'), cf: cashVal('cf'), env: cashVal('env') };
       if (photos.some(p => p.loading)) { toast('Подожди, фото ещё загружаются…'); return; }
       const m = missing();
@@ -1987,11 +2012,18 @@ const binds = {
         yields[pid] = v;
       });
       if (bad.length) { bad.forEach(i => i && i.parentNode.classList.add('bad')); if (bad[0]) bad[0].focus(); haptic('error'); toast('Впиши итоговый выход'); return; }
+      const pn = pid => me.preps.find(x => x.id === pid) || {};
+      const yc = Object.keys(yields).map(pid => ({ pid, v: yields[pid], unit: pn(pid).unit, name: pn(pid).name, inp: document.querySelector(`[data-y="${CSS.escape(pid)}"]`) }));
+      if (!(await fixBig(yc))) { haptic('error'); return; }
+      yc.forEach(c => yields[c.pid] = c.v);
       // сколько из сваренного убрали в морозилку (только у заготовок, которые замораживают)
       const freezes = {};
       for (const pid of sel) {
-        const inp = document.querySelector(`[data-fz="${CSS.escape(pid)}"]`), v = inp ? toNum(inp.value) : '';
+        const inp = document.querySelector(`[data-fz="${CSS.escape(pid)}"]`); let v = inp ? toNum(inp.value) : '';
         if (v === '' || v === 0) continue;
+        const fc = { v, unit: pn(pid).unit, name: pn(pid).name + ' (в морозилку)', inp };
+        if (!(await fixBig([fc]))) { haptic('error'); return; }
+        v = fc.v;
         if (isNaN(v) || v < 0 || v > yields[pid]) { inp.parentNode.classList.add('bad'); inp.focus(); haptic('error'); toast('В морозилку — не больше, чем сварено'); return; }
         freezes[pid] = v;
       }
@@ -2136,6 +2168,9 @@ const binds = {
       const items = {}; let bad = 0;
       document.querySelectorAll('[data-oid]').forEach(i => { const v = toNum(i.value); if (v === '') return; if (isNaN(v) || v < 0) bad++; else if (v > 0) items[i.dataset.oid] = v; });
       if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
+      const chk = Object.keys(items).map(pid => { const p = me.preps.find(x => x.id === pid) || {}; return { pid, v: items[pid], unit: p.unit, name: p.name, inp: document.querySelector(`[data-oid="${CSS.escape(pid)}"]`) }; });
+      if (!(await fixBig(chk))) { haptic('error'); return; }
+      chk.forEach(c => items[c.pid] = c.v);
       if (!Object.keys(items).length && !(await confirmBox('Заказ пустой. Отменить заказ на завтра?'))) return;
       btn.disabled = true; btn.textContent = 'Отправляю…';
       try { await call('order', { items }); orderDraft = {}; me = await call('me'); haptic('success'); toast(Object.keys(items).length ? 'Заказ сохранён ✅' : 'Заказ отменён'); render(); }
