@@ -1214,8 +1214,9 @@ const HELP = [
     'Чтобы закрыть смену, нужно: отметить все пункты чек-листа, добавить минимум 3 фото (бар, витрина, мойка), вписать остатки всех заготовок и заполнить блок «Касса и конверт».',
     '«Касса и конверт»: наличные по отчёту iiko, сколько наличных в кассе по факту (пересчитай) и сколько денег в конверте (пересчитай).',
     'Перед закрытием проверь, что все расходы из кассы и перекладывания в конверт записаны во вкладке «Наличные» — иначе бот покажет недостачу.',
-    'Если касса или конверт не сходятся больше чем на 20 000, при нажатии «Закрыть смену» бот подскажет вероятную причину (например, «деньги ещё в кассе» или «был расход, который не записали»). Исправить можно прямо там: «🔢 Пересчитаю», «− Забытый расход», «+ Внесение в конверт» — бот сразу пересчитает.',
-    'Всё проверил(а), а разница осталась — выбери причину: «ошибся в счёте», «забыл записать» или «недостача / не знаю», можно с комментарием. Без причины смену не закрыть. Управляющие увидят причину в отчёте.',
+    'Если в кассе лишние деньги (больше 20 000) — бот подскажет: переложи их в конверт и запиши во вкладке «Наличные» («+ Внести» → «из кассы»). Закрыть смену это не мешает.',
+    'Если недостача больше 20 000 (в кассе или конверте) — бот покажет, откуда она могла взяться, и список записей за смену: сверь их с тем, что брали на самом деле. Забытое можно добавить прямо там: «− Забытый расход», «+ Внесение в конверт» — бот сразу пересчитает.',
+    'Если недостача осталась — пройди 2 шага: пересчитай кассу и конверт ещё раз, проверь, что все расходы записаны. Потом объясни своими словами, откуда недостача (минимум 15 знаков). Без этого смену не закрыть. Управляющие увидят объяснение в отчёте.',
     'Пока чего-то не хватает, на кнопке написано, чего именно. Когда всё готово — нажми «Закрыть смену».',
     'Всё сохраняется по ходу: если закрыл приложение, продолжишь с того же места.',
     'Ошибся в остатках — нажми «Изменить подсчёт» и отправь заново.']],
@@ -1865,32 +1866,53 @@ const binds = {
       const box = document.getElementById('cashChk'); if (!box) return;
       const r = cashChk && cashChk.res;
       if (!r || !r.big) { box.innerHTML = ''; return; }
-      box.innerHTML = `<div style="margin-top:12px;padding:12px;border-radius:14px;background:var(--warm-soft);color:var(--forest)">
-        <b>⚠️ Не сходится больше чем на 20 000</b>
-        <p style="margin:6px 0 0">${Math.abs(r.kd) > r.tol ? '🧾 Касса: ' + (r.kd > 0 ? 'больше на ' : 'меньше на ') + esc(money(Math.abs(r.kd))) : '🧾 Касса сходится'}<br>
-        ${r.known ? (Math.abs(r.ed) > r.tol ? '✉️ Конверт: ' + (r.ed > 0 ? 'больше на ' : 'меньше на ') + esc(money(Math.abs(r.ed))) : '✉️ Конверт сходится') : ''}</p>
-        ${r.hint ? `<p style="margin:8px 0 0">💡 ${esc(r.hint.text)}</p>` : ''}
-        <div class="chips" style="margin-top:10px"><button class="chip" id="chkRe">🔢 Пересчитаю</button><button class="chip" id="chkExp">− Забытый расход</button><button class="chip" id="chkIn">+ Внесение в конверт</button></div>
-        <p class="sub" style="margin:12px 0 4px">Всё проверил(а), а разница осталась? Выбери причину — без неё смену не закрыть:</p>
-        <div class="chips">${Object.keys(r.reasons).map(k => `<button class="chip ${cashChk.why === k ? 'on' : ''}" data-why="${k}">${esc(r.reasons[k])}</button>`).join('')}</div>
-        <div class="form"><input id="chkNote" maxlength="300" placeholder="Комментарий (необязательно)" value="${esc(cashChk.note || '')}"></div></div>`;
-      box.querySelector('#chkRe').onclick = () => { const i = cashIn.find(x => x.dataset.cash === 'cf'); if (i) { i.focus(); i.select(); } };
+      const line = (ic, nm, d, ok) => Math.abs(d) > r.tol ? `${ic} ${nm}: ${d > 0 ? 'лишние ' : '<b>недостача</b> '}${esc(money(Math.abs(d)))}` : `${ic} ${nm} сходится`;
+      const nums = `<p style="margin:6px 0 0">${line('🧾', 'Касса', r.kd)}${r.known ? '<br>' + line('✉️', 'Конверт', r.ed) : ''}</p>`;
+      const ops = r.hint && r.hint.ops && r.hint.ops.length ? `<p class="sub" style="margin:8px 0 2px">Что записано — сверь с тем, что брали на самом деле:</p>` +
+        r.hint.ops.map(o => `<div style="font-size:14px;margin:2px 0">${o.near ? '👉 <b>' : '• '}${esc(money(o.a))} — ${esc(o.what)}${o.near ? '</b>' : ''}${o.by ? ' · <i>' + esc(o.by) + '</i>' : ''}</div>`).join('') : '';
+      const fixBtns = `<div class="chips" style="margin-top:8px"><button class="chip" id="chkExp">− Забытый расход</button><button class="chip" id="chkIn">+ Внесение в конверт</button></div>`;
+      if (!r.short) {   // излишек: только подсказка, закрывать не мешает
+        box.innerHTML = `<div style="margin-top:12px;padding:12px;border-radius:14px;background:var(--warm-soft);color:var(--forest)">
+          <b>💰 Лишние деньги</b>${nums}${r.hint && r.hint.text ? `<p style="margin:8px 0 0">💡 ${esc(r.hint.text)}</p>` : ''}${fixBtns}</div>`;
+      } else {
+        const nl = (cashChk.note || '').trim().length;
+        const step = (k, n, t) => `<button class="chip ${cashChk[k] ? 'on' : ''}" data-step="${k}" style="display:block;width:100%;text-align:left;margin:6px 0;white-space:normal">${cashChk[k] ? '' : '⬜️ '}<b>Шаг ${n}.</b> ${t}</button>`;
+        box.innerHTML = `<div style="margin-top:12px;padding:12px;border-radius:14px;background:var(--warm-soft);color:var(--forest)">
+          <b>⚠️ Недостача больше 20 000</b>${nums}
+          ${r.hint && r.hint.text ? `<p style="margin:8px 0 0">💡 ${esc(r.hint.text)}</p>` : ''}${ops}
+          <p class="sub" style="margin:12px 0 2px">Разберись, без этого смену не закрыть:</p>
+          ${step('s1', 1, 'Пересчитал(а) кассу и конверт ещё раз и вписал(а) точные суммы')}
+          ${step('s2', 2, 'Проверил(а): все расходы и внесения за смену записаны во вкладке «Наличные»')}
+          ${fixBtns}
+          <p class="sub" style="margin:12px 0 4px">Объясни своими словами, откуда недостача:</p>
+          <div class="form"><textarea id="chkNote" maxlength="300" rows="3" placeholder="Например: дал сдачу 50 000 вместо 5 000 гостю за 3-м столом">${esc(cashChk.note || '')}</textarea></div>
+          <p class="sub" id="chkNl" style="margin:2px 0 0">${nl >= r.noteMin ? '✅ Объяснение есть' : 'Ещё ' + (r.noteMin - nl) + ' знаков минимум'}</p></div>`;
+        box.querySelectorAll('[data-step]').forEach(b => b.onclick = () => {
+          const k = b.dataset.step; cashChk[k] = !cashChk[k];
+          if (k === 's1' && cashChk[k]) { const i = cashIn.find(x => x.dataset.cash === 'cf'); if (i) { i.focus(); i.select(); } }
+          drawChk(); syncBtn();
+        });
+        box.querySelector('#chkNote').oninput = e => {
+          cashChk.note = e.target.value; const n = cashChk.note.trim().length, p = document.getElementById('chkNl');
+          if (p) p.textContent = n >= r.noteMin ? '✅ Объяснение есть' : 'Ещё ' + (r.noteMin - n) + ' знаков минимум'; syncBtn();
+        };
+      }
       const after = async () => { await runChk(cashNow()); };
       const openF = async (kind, pre) => { try { if (!cashD) cashD = await call('cash'); openCashForm(kind, null, after, pre); } catch (e) { toast(e.message); } };
       box.querySelector('#chkExp').onclick = () => openF('exp', { src: Math.abs(r.kd) > r.tol || !r.known ? 'kassa' : 'env' });
-      box.querySelector('#chkIn').onclick = () => openF('in', { from: r.hint && r.hint.code === 'moved' ? 'kassa' : '' });
-      box.querySelectorAll('[data-why]').forEach(b => b.onclick = () => { cashChk.why = cashChk.why === b.dataset.why ? '' : b.dataset.why; drawChk(); syncBtn(); });
-      box.querySelector('#chkNote').oninput = e => { cashChk.note = e.target.value; };
+      box.querySelector('#chkIn').onclick = () => openF('in', { from: r.kd > r.tol || (r.kd < -r.tol && r.ed > r.tol) ? 'kassa' : '' });
     };
+    // разбор недостачи пройден: оба шага и объяснение своими словами
+    const chkDone = () => !!(cashChk && cashChk.s1 && cashChk.s2 && (cashChk.note || '').trim().length >= ((cashChk.res && cashChk.res.noteMin) || 15) && (cashChk.note || '').trim().split(/\s+/).length >= 2);
     const cashNow = () => ({ ik: cashVal('ik'), cf: cashVal('cf'), env: cashVal('env') });
     // true — можно закрывать
     const runChk = async cash => {
       const r = await call('cashPreview', { cash });
-      if (!cashChk) cashChk = { first: { kd: r.kd, ed: r.ed }, why: '', note: '' };
+      if (!cashChk) cashChk = { first: { kd: r.kd, ed: r.ed }, s1: false, s2: false, note: '' };
       cashChk.res = r; drawChk();
-      return !r.big || !!cashChk.why;
+      return !r.short || chkDone();
     };
-    cashIn.forEach(i => i.oninput = () => { draft['$' + i.dataset.cash] = i.value; saveDraft(); cashHint(); if (cashChk) { cashChk.res = null; cashChk.why = ''; drawChk(); } syncBtn(); });
+    cashIn.forEach(i => i.oninput = () => { draft['$' + i.dataset.cash] = i.value; saveDraft(); cashHint(); if (cashChk) { cashChk.res = null; drawChk(); } syncBtn(); });
     cashHint();
     drawChk();
     // что ещё мешает закрыть смену
@@ -1902,7 +1924,7 @@ const binds = {
       if (ph < MIN_PH) m.push((MIN_PH - ph) + ' фото');
       if (vMiss > 0) m.push(vMiss + ' ' + (vMiss === 1 ? 'остаток' : vMiss < 5 ? 'остатка' : 'остатков'));
       if (cashIn.length && cashIn.some(i => !(parseMoney(i.value) >= 0))) m.push('касса');
-      else if (cashChk && cashChk.res && cashChk.res.big && !cashChk.why) m.push('причина разницы');
+      else if (cashChk && cashChk.res && cashChk.res.short && !chkDone()) m.push('разбор недостачи');
       return m;
     };
     const syncBtn = () => {
@@ -1955,9 +1977,9 @@ const binds = {
         let ok = false;
         try { ok = await runChk(cash); } catch (e) { toast(e.message); }
         btn.disabled = false; syncBtn();
-        if (!ok) { haptic('error'); const b = document.getElementById('cashChk'); if (b && b.innerHTML) { toast('Касса не сходится — проверь или выбери причину'); b.scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
+        if (!ok) { haptic('error'); const b = document.getElementById('cashChk'); if (b && b.innerHTML) { toast('Недостача — пройди 2 шага и объясни своими словами'); b.scrollIntoView({ behavior: 'smooth', block: 'center' }); } return; }
       }
-      const cashWhy = cashChk && cashChk.why ? { r: cashChk.why, note: (cashChk.note || '').trim() } : null, cashFirst = cashChk ? cashChk.first : null;
+      const cashWhy = cashChk && cashChk.res && cashChk.res.short ? { s1: !!cashChk.s1, s2: !!cashChk.s2, note: (cashChk.note || '').trim() } : null, cashFirst = cashChk ? cashChk.first : null;
       btn.disabled = true; btn.textContent = 'Отправляю…';
       try { lastResult = await call('count', { values, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
