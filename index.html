@@ -297,6 +297,11 @@
   .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
   .grid3 label{font-size:12px;color:var(--muted);display:block}
   .grid3 input{margin-top:3px;text-align:center}
+  .nd{margin-top:8px}
+  .nd summary{font-size:13px;color:var(--muted);cursor:pointer}
+  .grid3.nd7{grid-template-columns:repeat(7,1fr);gap:4px}
+  .grid3.nd7 input{padding:8px 2px;font-size:14px}
+  .grid3.nd7 input::placeholder{opacity:.4}
   .x{border:0;background:var(--warm-soft);color:var(--danger);width:40px;height:40px;border-radius:10px;font-size:20px;cursor:pointer;flex:0 0 auto}
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chip{border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:8px 14px;font-size:15px;cursor:pointer;transition:.15s}
@@ -1164,6 +1169,7 @@ function askQty(title, sub, def, unit, okText) {
 }
 
 // ---- Инструкция (кнопка «?» в шапке). Тот же текст, что в Google-документе для команды ----
+const ND_WD = ['', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 const HELP = [
   ['👋', 'Как подключиться', [
     'Найди в Телеграме бота @rassvet_bar_bot и нажми «Запустить».',
@@ -1296,6 +1302,7 @@ const HELP = [
     '15:00 — утренней смене: сдать склад вечерней (в личку).',
     '18:30 — напоминание вечерней смене про несваренное (в личку).',
     'Пятница 12:00 — отметить желаемые выходные на следующую неделю (в личку), принимаем до субботы 18:00.',
+    'Понедельник 10:00 — администратору: советы по нормам заготовок. Бот смотрит, сколько каждой заготовки уходило в каждый день недели за 4 недели, и пишет «пт: увеличь норму до …» или «пн: уменьши до …». Сам бот нормы не меняет — их ставят в Настройках → Заготовки → «Норма по дням».',
     'Понедельник 10:00 — генуборка: когда твоя смена (в личку); среда 18:00 — напоминание, если не отметил(а).',
     '20:00 — «Завтра у тебя смена» (в личку).',
     '21:30 или 22:30 — «Пора закрываться» (в группу); через 30 минут — ещё раз, если остатки не внесены.',
@@ -1688,6 +1695,10 @@ const views = {
           <label>Минимум<input data-f="min" inputmode="decimal" value="${esc(p.min)}" placeholder="0"></label>
           <label>Норма<input data-f="norm" inputmode="decimal" value="${esc(p.norm)}" placeholder="0"></label>
         </div>
+        <details class="nd" ${p.nd && Object.keys(p.nd).length ? 'open' : ''}><summary>Норма по дням${p.nd && Object.keys(p.nd).length ? ' · ' + Object.keys(p.nd).map(w => ND_WD[w] + ' ' + p.nd[w]).join(', ') : ''}</summary>
+          <p class="sub" style="margin:4px 0 0">Пусто — обычная норма. День — это день, когда варят.</p>
+          <div class="grid3 nd7">${[1, 2, 3, 4, 5, 6, 7].map(w => `<label>${ND_WD[w]}<input data-nd="${w}" inputmode="decimal" value="${esc(p.nd && p.nd[w] != null ? p.nd[w] : '')}" placeholder="${esc(p.norm || '')}"></label>`).join('')}</div>
+        </details>
         <div class="grid3" style="grid-template-columns:1fr">
           <label>Техкарта<select data-f="tk"><option value="">— нет —</option>${cards.filter(c => !c.hidden || p.tk === c.id).map(c => `<option value="${esc(c.id)}" ${p.tk === c.id ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}</select></label>
         </div>
@@ -1698,7 +1709,7 @@ const views = {
         <label class="switch"><input type="checkbox" data-f="frz" ${p.frz ? 'checked' : ''}> ❄️ Замораживаем (часть кладут в морозилку)</label>
       </div>`).join('');
     const cl = cfg.checklist || [];
-    return card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. Техкарта — рецепт из таблицы, выход для пересчёта берётся из строки «Выход» в техкарте. Срок хранения — для напоминаний в «Холодильнике»; пусто — берётся из техкарты (серая цифра).</p>
+    return card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. «Норма по дням» — своя норма на загруженные или тихие дни; цифры подсказывает бот в понедельник. Техкарта — рецепт из таблицы, выход для пересчёта берётся из строки «Выход» в техкарте. Срок хранения — для напоминаний в «Холодильнике»; пусто — берётся из техкарты (серая цифра).</p>
       ${rows || ''}<button class="btn soft" id="add">+ Добавить заготовку</button>`) +
       card(`<h2>Чек-лист закрытия</h2><p class="sub">Пункты, которые отмечают на закрытии смены</p><div id="cl">` +
         cl.map((t, k) => `<div class="cl-row edit" style="padding:8px;margin-bottom:8px"><input data-cl value="${esc(t)}" placeholder="Например: почистить кофемашину"><button class="x" data-cldel="${k}">×</button></div>`).join('') +
@@ -2118,7 +2129,10 @@ const binds = {
   preps() {
     const collect = () => document.querySelectorAll('.edit[data-i]').forEach(row => {
       const p = cfg.preps[row.dataset.i];
-      row.querySelectorAll('input,select').forEach(inp => p[inp.dataset.f] = inp.type === 'checkbox' ? inp.checked : inp.value);
+      row.querySelectorAll('input,select').forEach(inp => {
+        if (inp.dataset.nd) { p.nd = p.nd || {}; p.nd[inp.dataset.nd] = inp.value; return; }
+        p[inp.dataset.f] = inp.type === 'checkbox' ? inp.checked : inp.value;
+      });
     });
     // «Замораживаем» — сразу показать/спрятать поле «В морозилке, дней»
     document.querySelectorAll('.edit input[data-f="frz"]').forEach(cb => cb.onchange = () => { collect(); render(); });
