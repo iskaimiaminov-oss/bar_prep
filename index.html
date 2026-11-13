@@ -2002,7 +2002,8 @@ const views = {
         ${(dr.urls || [{ sheet: dr.sheet, url: dr.url }]).map(u => `<button class="btn soft" data-grurl="${esc(u.url)}">📄 Открыть «${esc(u.sheet)}»</button>`).join('')}
         ${dr.status === 'new' && d.canEdit ? `<div class="two"><button class="btn" id="grApprove">✅ Утвердить</button><button class="btn soft" id="grManual">✍️ Поправлю сам</button></div>` : ''}
         ${dr.status === 'done' ? `<p class="sub" style="margin-top:10px">${dr.sent > 0 ? '📤 Команде разослан ' + esc(new Date(dr.sent).toLocaleString('ru-RU', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) : '📤 ' + esc(dr.sendNote || '')}</p>
-          ${d.canEdit ? `<div class="two"><button class="btn" id="grSend">📤 ${dr.sent > 0 ? 'Разослать ещё раз' : 'Разослать команде'}</button><button class="btn soft" id="grRegen">🔄 Пересоставить</button></div>` : ''}` : ''}`);
+          ${d.canEdit ? `<div class="two"><button class="btn" id="grSend">📤 ${dr.sent > 0 ? 'Разослать ещё раз' : 'Разослать команде'}</button><button class="btn soft" id="grRegen">🔄 Пересоставить</button></div>` : ''}` : ''}
+        ${d.snap && d.canEdit ? `<p class="sub" style="margin-top:10px">Не понравился новый вариант — можно вернуть график, составленный ${esc(new Date(d.snap.at).toLocaleString('ru-RU', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }))}</p><button class="btn soft" id="grRestore">↩️ Вернуть предыдущий график</button>` : ''}`);
     }
     return out;
   },
@@ -2567,6 +2568,8 @@ const binds = {
     if (gs) gs.onclick = async () => { if (await confirmBox('Разослать каждому его смены на эту неделю?')) act(gs, 'grSend', {}); };
     const gr = document.getElementById('grRegen');
     if (gr) gr.onclick = async () => { if (await confirmBox('Пересоставить график? Уберу то, что вписал бот, и составлю заново. Клетки, которые ты правил руками, останутся')) act(gr, 'grRegen', {}); };
+    const gb = document.getElementById('grRestore');
+    if (gb) gb.onclick = async () => { if (await confirmBox(grD && grD.snap ? grD.snap.ask : 'Вернуть предыдущий график?')) act(gb, 'grRestore', {}); };
     const rl = document.getElementById('grReload'); if (rl) rl.onclick = () => { grD = null; render(); };
     document.querySelectorAll('[data-grurl]').forEach(op => op.onclick = () => { try { tg.openLink(op.dataset.grurl); } catch (e) { window.open(op.dataset.grurl, '_blank'); } });
     const ap = document.getElementById('grApprove');
