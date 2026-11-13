@@ -445,6 +445,7 @@ let sentCopy = null;   // что отправили на закрытии — в
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
 let grD = null, grSel = null, grForm = {}, grZ = null, grPrev = null, grVac = null;   // grVac — форма отпуска/больничного   // grPrev — предпросмотр для админа   // вкладка «График»; grZ — день, на который пишем заявление
 let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
+let countReopen = false;   // нажали «Изменить подсчёт» у уже закрытой смены — показываем форму
 
 async function call(action, payload) {
   const q = new URLSearchParams({ action, initData: tg.initData });
@@ -1530,9 +1531,11 @@ function openHelp() {
 // Срок хранения из техкарты в днях («7 суток» → 7) — подсказка в редакторе заготовок
 function tkShelf(cards, tk) { const c = (cards || []).find(x => x.id === tk), m = c && String(c.shelf || '').match(/(\d+)\s*(сут|дн|день|дней)/i); return m ? m[1] : ''; }
 
+// подсказка в поле «Почти пусто»: общее правило — 0,15 л/кг, 150 мл/г, штуки — 0
+function lowDef(unit) { const u = String(unit || '').trim().replace(/\.$/, ''); return /^(л|l|литр\S*|кг|kg|килограмм\S*)$/i.test(u) ? '0,15' : /^(мл|ml|г|гр|g|грамм\S*)$/i.test(u) ? '150' : '0'; }
 function needRow(i) {
   return `<div class="need"><div class="dot">${esc(String(i.name).trim()[0] || '•').toUpperCase()}</div>
-    <div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}${i.res ? ' с запасом' : ''}${i.frozen > 0 ? ' · ❄️ в морозилке ' + fmt(i.frozen) : ''}</span></div>
+    <div class="pname"><b>${esc(i.name)}</b><span>осталось ${i.left > 0 ? fmt(i.left) + ' ' + esc(i.unit) + ' — почти пусто' : fmt(i.have) + ' ' + esc(i.unit)} · норма ${fmt(i.norm)}${i.res ? ' с запасом' : ''}${i.frozen > 0 ? ' · ❄️ в морозилке ' + fmt(i.frozen) : ''}</span></div>
     <div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div></div>`;
 }
 
@@ -1639,9 +1642,10 @@ function openCashForm(kind, op, onDone, pre) {
 const views = {
   async cash() { if (!cashD || !cashD.fresh) cashD = await call('cash'); cashD.fresh = false; return cashHtml(); },
   async count() {
-    if (lastResult) {
-      const items = lastResult.items;
-      return card(`<div class="empty" style="padding-bottom:6px"><div class="icon">🌙</div><h2>${(me.checklist || []).length ? 'Смена закрыта, спасибо!' : 'Спасибо, остатки отправлены!'}</h2></div>` +
+    const cz = lastResult || (!countReopen && me.closed);
+    if (cz) {
+      const items = cz.items || [];
+      return card(`<div class="empty" style="padding-bottom:6px"><div class="icon">🌙</div><h2>${(me.checklist || []).length ? 'Смена закрыта, спасибо!' : 'Спасибо, остатки отправлены!'}</h2>${me.closed && me.closed.by ? `<p class="sub">Закрыл(а) ${esc(me.closed.by)}, ${fmtTs(me.closed.at)}</p>` : ''}</div>` +
         (items.length ? `<h3>Завтра нужно сварить</h3>` + items.map(needRow).join('') : `<div class="status"><span class="big">🌿</span>Всего хватает — завтра варить не нужно</div>`) +
         `<button class="btn soft" id="again">Изменить подсчёт</button>`);
     }
@@ -1697,7 +1701,7 @@ const views = {
       // у выбранной заготовки — поле «Итоговый выход» (сразу стоит план, поправить, если вышло иначе)
       const rows = ro ? t.items.map(i => made[i.pid] ? madeRow(i) : needRow(i)).join('') : t.items.map(i => made[i.pid]
         ? madeRow(i)
-        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" ${ro ? 'style="cursor:default"' : `data-pid="${esc(i.pid)}"`}><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>осталось ${fmt(i.have)} ${esc(i.unit)} · норма ${fmt(i.norm)}</span>${i.frozen > 0 ? `<span style="display:block;color:#3B5872;margin-top:2px">❄️ в морозилке ${fmt(i.frozen)} ${esc(i.unit)}</span><button class="tkbtn" data-thaw="${esc(i.pid)}" data-amt="${Math.min(i.need, i.frozen)}" style="margin-top:8px">❄️ Не варил, а разморозил</button>` : ''}
+        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" ${ro ? 'style="cursor:default"' : `data-pid="${esc(i.pid)}"`}><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>осталось ${i.left > 0 ? fmt(i.left) + ' ' + esc(i.unit) + ' — почти пусто' : fmt(i.have) + ' ' + esc(i.unit)} · норма ${fmt(i.norm)}</span>${i.frozen > 0 ? `<span style="display:block;color:#3B5872;margin-top:2px">❄️ в морозилке ${fmt(i.frozen)} ${esc(i.unit)}</span><button class="tkbtn" data-thaw="${esc(i.pid)}" data-amt="${Math.min(i.need, i.frozen)}" style="margin-top:8px">❄️ Не варил, а разморозил</button>` : ''}
             <label class="yld"><em>Итоговый выход</em><span class="field"><input data-y="${esc(i.pid)}" inputmode="decimal" enterkeyhint="done" value="${esc(yv[i.pid] != null ? yv[i.pid] : fmt(i.need))}"><small>${esc(i.unit)}</small></span></label>${fzField(i.pid, i.unit)}</div><div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div>${hasTk(i.pid) ? `<button class="tkbtn" data-tk="${esc(i.pid)}" data-amt="${i.need}">ТК</button>` : ''}</div>`).join('');
       const allDone = t.items.every(i => made[i.pid]);
       out += card(`<h2>Сварить сегодня</h2><p class="sub">${allDone ? 'Всё готово — спасибо! 🎉' : ro ? 'Что нужно сварить по последнему подсчёту' : 'Отметь, что сварил(а)'}</p>${rows}`);
@@ -1890,6 +1894,9 @@ const views = {
           <label>${p.frz ? 'Хранится после разморозки, дней' : 'Срок хранения, дней'}<input data-f="shelf" inputmode="numeric" value="${esc(p.shelf || '')}" placeholder="${esc(tkShelf(cards, p.tk) || '—')}"></label>
           ${p.frz ? `<label>В морозилке, дней<input data-f="frzDays" inputmode="numeric" value="${esc(p.frzDays || '')}" placeholder="30"></label>` : '<span></span>'}
         </div>
+        <div class="grid3" style="grid-template-columns:1fr">
+          <label>Почти пусто, если меньше (${esc(p.unit || 'ед.')}) — тогда бот пишет «варить» как с нуля<input data-f="low" inputmode="decimal" value="${esc(p.low != null ? String(p.low).replace('.', ',') : '')}" placeholder="${esc(lowDef(p.unit))}"></label>
+        </div>
         <label class="switch"><input type="checkbox" data-f="frz" ${p.frz ? 'checked' : ''}> ❄️ Замораживаем (часть кладут в морозилку)</label>
       </div>`).join('');
     const cl = cfg.checklist || [];
@@ -2038,7 +2045,7 @@ const binds = {
     const again = document.getElementById('again');
     // «Изменить подсчёт»: возвращаем всё, что отправили (остатки, даты, морозилка, касса, чек-лист, фото)
     if (again) again.onclick = () => {
-      lastResult = null;
+      lastResult = null; countReopen = true;
       if (sentCopy) { draft = JSON.parse(JSON.stringify(sentCopy.draft)); checks = new Set(sentCopy.checks); photos = sentCopy.photos.map(p => Object.assign({}, p)); saveDraft(); }
       render();
     };
@@ -2221,7 +2228,7 @@ const binds = {
       }
       const cashWhy = cashChk && cashChk.res && cashChk.res.short ? { s1: !!cashChk.s1, s2: !!cashChk.s2, note: (cashChk.note || '').trim() } : null, cashFirst = cashChk ? cashChk.first : null;
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values, rq, fq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); sentCopy = { draft: JSON.parse(JSON.stringify(draft)), checks: [...checks], photos: photos.filter(p => p.id).map(p => Object.assign({}, p)) }; draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
+      try { lastResult = await call('count', { values, rq, fq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); countReopen = false; me.closed = { by: me.name, at: Date.now(), items: lastResult.items || [] }; sentCopy = { draft: JSON.parse(JSON.stringify(draft)), checks: [...checks], photos: photos.filter(p => p.id).map(p => Object.assign({}, p)) }; draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
