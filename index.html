@@ -79,6 +79,11 @@
   .progress i{display:block;height:100%;background:var(--olive);border-radius:9px;transition:width .25s}
   .prow{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
   .prow:last-child{border-bottom:0}
+  .bsub{margin:-6px 0 6px 4px;padding:2px 0 6px 12px;border-left:3px solid var(--olive-soft);border-bottom:1px solid var(--line)}
+  .brow{display:flex;align-items:center;gap:10px;padding:5px 0}
+  .brow span{flex:1;min-width:0;font-size:14px;color:var(--muted)}
+  .brow span b{color:var(--forest);font-weight:600}
+  .field input[readonly]{color:var(--olive);cursor:default}
   .pname{flex:1;min-width:0}
   .pname b{display:block;font-weight:500;font-size:16px;word-break:break-word}
   .pname span{font-size:13px;color:var(--muted)}
@@ -1270,6 +1275,40 @@ function askQty(title, sub, def, unit, okText) {
     wrap.querySelector('#askOk').onclick = async () => { const v = toNum(inp.value); if (v === '' || !(v > 0)) { toast('Впиши количество'); inp.focus(); return; } const it = { v, unit, inp }; if (!(await fixBig([it]))) return; done(it.v); };
   });
 }
+// Забыли отметить варку: заготовка, день (до 3 дней назад), выход. Партия получит дату варки, срок — от неё
+function askLate() {
+  const n = me.lateDays || 3, today = (me.today && me.today.date) || new Date(Date.now() + 5 * 36e5).toISOString().slice(0, 10);
+  const days = []; for (let i = 1; i <= n; i++) days.push(new Date(new Date(today + 'T12:00:00Z').getTime() - i * 864e5).toISOString().slice(0, 10));
+  const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+  const lbl = (d, i) => (i === 0 ? 'Вчера' : i === 1 ? 'Позавчера' : WD[new Date(d + 'T12:00:00Z').getUTCDay()]) + ', ' + d.slice(8, 10) + '.' + d.slice(5, 7);
+  let day = days[0];
+  closeSheet();
+  const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+  wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>📅 Варка задним числом</h2>
+    <p class="sub" style="margin-top:4px">Забыл(а) отметить, что сварил(а)? Выбери заготовку, день и сколько вышло. Срок годности посчитается от этого дня. Можно до ${n} дней назад</p>
+    <label class="sub" style="display:block;margin-top:10px">Что сварил(а)<select id="lp" style="margin-top:6px"><option value="">— выбери заготовку —</option>${me.preps.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label>
+    <p class="sub" style="margin:12px 0 0">Когда сварил(а)</p><div class="seg" id="ld">${days.map((d, i) => `<button data-d="${d}" class="${i === 0 ? 'on st0' : ''}">${esc(lbl(d, i))}</button>`).join('')}</div>
+    <div class="amount"><span>Итоговый выход</span><input id="lq" inputmode="decimal" placeholder="0"><b id="lu"></b></div>
+    <div class="amount" id="lfw" style="display:none"><span>❄️ Из них в морозилку</span><input id="lf" inputmode="decimal" placeholder="0"><b id="lu2"></b></div>
+    <button class="btn" id="lOk">✅ Внести</button><button class="btn soft" id="lNo">Отмена</button></div>`;
+  document.body.appendChild(wrap);
+  const $ = q => wrap.querySelector(q), prep = () => me.preps.find(p => p.id === $('#lp').value);
+  $('#lp').onchange = () => { const p = prep(); $('#lu').textContent = $('#lu2').textContent = p ? p.unit || '' : ''; $('#lfw').style.display = p && p.frz ? '' : 'none'; if (p) setTimeout(() => $('#lq').focus(), 60); };
+  wrap.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { day = b.dataset.d; wrap.querySelectorAll('[data-d]').forEach(x => x.className = x === b ? 'on st0' : ''); });
+  $('#lNo').onclick = () => closeSheet();
+  wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+  $('#lOk').onclick = async () => {
+    const p = prep(); if (!p) { toast('Выбери заготовку'); return; }
+    const it = { v: toNum($('#lq').value), unit: p.unit, inp: $('#lq') };
+    if (it.v === '' || !(it.v > 0)) { toast('Впиши итоговый выход'); $('#lq').focus(); return; }
+    const fv = p.frz ? toNum($('#lf').value) : '', ft = { v: fv === '' ? 0 : fv, unit: p.unit, inp: fv === '' ? null : $('#lf') };
+    await fixBig([it, ft]);
+    if (isNaN(ft.v) || ft.v < 0 || ft.v > it.v) { toast('В морозилку — не больше, чем сварено'); return; }
+    const b = $('#lOk'); b.disabled = true; b.textContent = 'Вношу…';
+    try { const r = await call('madeLate', { pid: p.id, day, q: it.v, f: ft.v }); closeSheet(); fridgeData = null; haptic('success'); toast('Внесено за ' + day.slice(8, 10) + '.' + day.slice(5, 7) + ' ✅'); me = await call('me'); render(); askLabel(r && r.label); }
+    catch (e) { toast(e.message); b.disabled = false; b.textContent = '✅ Внести'; }
+  };
+}
 
 // ---- Инструкция (кнопка «?» в шапке). Тот же текст, что в Google-документе для команды ----
 const ND_WD = ['', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
@@ -1316,12 +1355,14 @@ const HELP = [
     'Отметил не ту заготовку? Нажми 🗑 у неё: отметка удалится, партия уберётся из холодильника, из отчёта и из сообщения в группе. Потом отметь правильную заготовку с правильным выходом. Удалить можно только в тот же день, администратор увидит, кто удалил.',
     'Кнопка «ТК» рядом с заготовкой — техкарта с пересчётом на нужный объём.',
     'Сварил то, чего не было в списке? Внизу есть блок «Сварил что-то ещё?» — отметь там.',
+    'Забыл отметить варку вчера или раньше? Внизу «Сегодня» нажми «📅 Забыл отметить варку?»: выбери заготовку, день (до 3 дней назад) и сколько вышло. Партия в холодильнике получит правильную дату, и срок посчитается от неё. Не отмечай такую варку сегодняшним днём — дата и срок будут неправильные.',
     'Тыквенное пюре: если часть сразу убираешь в морозилку, впиши это в поле «Из них в морозилку». Если в морозилке уже есть пюре — не вари, а нажми «Не варил, а разморозил».',
     'В 15:30 бот пишет в группу, что успела утренняя смена и что осталось вечерней. В 18:30 вечерняя смена получит напоминание в личку, если что-то ещё не сварено.']],
   ['🌙', 'Закрытие смены', [
     'Вкладка «Закрытие» доступна тем, кто закрывает смену по графику (смена до 22:00 и позже).',
     'Напоминание «Пора закрываться» приходит в 21:30 с понедельника по четверг и в 22:30 с пятницы по воскресенье.',
     'Чтобы закрыть смену, нужно: отметить все пункты чек-листа, добавить минимум 3 фото (бар, витрина, мойка), вписать остатки всех заготовок и заполнить блок «Касса и конверт».',
+    'Остатки по датам: если в холодильнике одна заготовка разных дат (например, сироп от 11.11 и от 13.11), под ней будут отдельные поля для каждой даты, старые сверху. Посчитай каждую банку по наклейке, сумма посчитается сама. Если партия одна — одно поле, как раньше.',
     '«Касса и конверт»: наличные по отчёту iiko, сколько наличных в кассе по факту (пересчитай) и сколько денег в конверте (пересчитай).',
     'Перед закрытием проверь, что все расходы из кассы и перекладывания в конверт записаны во вкладке «Наличные» — иначе бот покажет недостачу.',
     'Если в кассе лишние деньги (больше 20 000) — бот подскажет: переложи их в конверт и запиши во вкладке «Наличные» («+ Внести» → «из кассы»). Закрыть смену это не мешает.',
@@ -1573,13 +1614,18 @@ const views = {
       return empty(works ? '☕' : '🌿', works ? first + ', ты сегодня не закрываешь, отдыхай💋' : first + ', ты сегодня не работаешь, отдыхай💋', who);
     }
     if (!me.preps.length) return empty('🫙', 'Заготовок пока нет', me.isAdmin ? 'Добавь их во вкладке «Заготовки».' : 'Администратор ещё не добавил список.');
+    // в холодильнике 2 партии и больше — считаем каждую дату отдельно, сумма считается сама
+    const bd = ts => new Date(ts).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
     const rows = me.preps.map(p => {
-      const v = draft[p.id] != null ? draft[p.id] : '';
+      const cb = (me.cb || {})[p.id];
+      let v = draft[p.id] != null ? draft[p.id] : '';
+      if (cb) { let t = 0; v = cb.every(x => { const y = toNum(draft['b:' + x.id] != null ? draft['b:' + x.id] : ''); if (y === '' || isNaN(y) || y < 0) return false; t += y; return true; }) ? fmt(t) : ''; }
       const low = v !== '' && toNum(v) < p.min;
       return `<div class="prow ${low ? 'low' : ''}" data-min="${p.min}">
-        <div class="pname"><b>${esc(p.name)}<span class="tag">варить</span></b><span>минимум ${fmt(p.min)} ${esc(p.unit)}</span></div>
-        <label class="field"><input inputmode="decimal" enterkeyhint="next" data-id="${esc(p.id)}" value="${esc(v)}" placeholder="0"><small>${esc(p.unit)}</small></label>
-      </div>`;
+        <div class="pname"><b>${esc(p.name)}<span class="tag">варить</span></b><span>минимум ${fmt(p.min)} ${esc(p.unit)}${cb ? ' · <b style="display:inline;font-size:13px;color:var(--olive)">посчитай по датам ↓</b>' : ''}</span></div>
+        <label class="field"><input inputmode="decimal" enterkeyhint="next" data-id="${esc(p.id)}" value="${esc(v)}" placeholder="${cb ? 'сумма' : '0'}" ${cb ? 'readonly tabindex="-1"' : ''}><small>${esc(p.unit)}</small></label>
+      </div>` + (cb ? `<div class="bsub">${cb.map(x => `<div class="brow"><span>от <b>${esc(bd(x.d))}</b>${x.e ? ' · годна до ' + esc(bd(x.e)) : ''}</span>
+        <label class="field"><input inputmode="decimal" enterkeyhint="next" data-bid="${esc(x.id)}" data-bp="${esc(p.id)}" value="${esc(draft['b:' + x.id] != null ? draft['b:' + x.id] : '')}" placeholder="0"><small>${esc(p.unit)}</small></label></div>`).join('')}</div>` : '');
     }).join('');
     const last = me.last ? `<p class="sub">Последний подсчёт: ${esc(me.last.by)}, ${fmtTs(me.last.ts)}</p>` : `<p class="sub">Внеси, сколько осталось каждой заготовки</p>`;
     const cl = me.checklist || [];
@@ -1641,6 +1687,7 @@ const views = {
       out += `<details class="card" id="extraBox" ${open ? 'open' : ''}><summary><div class="pname"><h2>${t.items.length ? 'Сварил что-то ещё?' : 'Сварил заготовку?'}</h2>
         <p class="sub">${madeCnt ? 'Отмечено сверх списка: ' + madeCnt : 'Отметь, если сварил(а) то, чего не было в списке'}</p></div></summary>${rowsX}</details>`;
     }
+    if (me.preps.length) out += `<button class="btn soft" id="lateBtn" style="margin-top:2px">📅 Забыл отметить варку? Внести за прошлый день</button>`;
     const pending = t.items.some(i => !made[i.pid]), canMore = extras.some(x => !made[x.pid]);
     if (!pending && !canMore) return out;
     // если список сварен, кнопка появляется только когда что-то выбрали в «Сварил что-то ещё»
@@ -1967,6 +2014,14 @@ const binds = {
       try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
     });
     const inputs = [...document.querySelectorAll('input[data-id]')];
+    // по датам: каждая партия своим полем, общий остаток заготовки = сумма (пока не заполнены все даты — пусто)
+    const subs = [...document.querySelectorAll('input[data-bid]')];
+    const sumOf = pid => { let t = 0; for (const x of subs.filter(y => y.dataset.bp === pid)) { const v = toNum(x.value); if (v === '' || isNaN(v) || v < 0) return ''; t += v; } return fmt(t); };
+    subs.forEach(x => x.addEventListener('input', () => {
+      draft['b:' + x.dataset.bid] = x.value; x.parentNode.classList.remove('bad');
+      const m = inputs.find(i => i.dataset.id === x.dataset.bp); if (m) { m.value = sumOf(x.dataset.bp); m.dispatchEvent(new Event('input')); }
+    }));
+    inputs.filter(i => i.readOnly).forEach(i => i.onclick = () => { const f = subs.find(x => x.dataset.bp === i.dataset.id && x.value.trim() === '') || subs.find(x => x.dataset.bp === i.dataset.id); if (f) f.focus(); });
     const cashIn = [...document.querySelectorAll('input[data-cash]')], cashVal = k => { const i = cashIn.find(x => x.dataset.cash === k); return i ? parseMoney(i.value) : NaN; };
     // подсказка: что уже записано из кассы через «Наличные» (бот вычтет это из остатка iiko)
     const cashHint = () => {
@@ -2071,6 +2126,11 @@ const binds = {
     });
     btn.onclick = async () => {
       if ((me.offAsk || []).length) { toast('Сначала ответь про списанные ботом заготовки'); haptic('error'); const o = document.querySelector('[data-offok]'); if (o) o.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+      // по датам: сначала поправим 1600 → 1,6 в полях партий, потом соберём { id партии: остаток }
+      const sc = subs.filter(x => toNum(x.value) !== '' && !isNaN(toNum(x.value))).map(x => { const p = me.preps.find(y => y.id === x.dataset.bp) || {}; return { v: toNum(x.value), unit: p.unit, name: p.name, inp: x }; });
+      await fixBig(sc);
+      if (subs.some(x => { const v = toNum(x.value); return v !== '' && (isNaN(v) || v < 0); })) { toast('Проверь числа по датам — есть ошибка'); haptic('error'); return; }
+      const bq = {}; subs.forEach(x => { const v = toNum(x.value); if (v !== '') bq[x.dataset.bid] = v; });
       const values = {}; let emptyN = 0, bad = 0;
       inputs.forEach(i => { const v = toNum(i.value); if (v === '') emptyN++; else if (isNaN(v) || v < 0) bad++; else values[i.dataset.id] = v; });
       if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
@@ -2096,7 +2156,7 @@ const binds = {
       }
       const cashWhy = cashChk && cashChk.res && cashChk.res.short ? { s1: !!cashChk.s1, s2: !!cashChk.s2, note: (cashChk.note || '').trim() } : null, cashFirst = cashChk ? cashChk.first : null;
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
+      try { lastResult = await call('count', { values, bq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
@@ -2134,6 +2194,7 @@ const binds = {
     });
     const xb = document.getElementById('extraBox');
     if (xb) xb.addEventListener('toggle', () => { extraOpen = xb.open; });
+    const lb = document.getElementById('lateBtn'); if (lb) lb.onclick = () => askLate();
     const btn = document.getElementById('made'); if (!btn) return;
     const dock = document.getElementById('madeDock'), pending = me.today.items.some(i => !(me.today.made || {})[i.pid]);
     const sync = () => {
