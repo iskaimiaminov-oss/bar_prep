@@ -441,6 +441,7 @@ let yv = {};   // итоговый выход, который вписали (pi
 let extraOpen = null;   // блок «Сварил что-то ещё» открыт/закрыт (null — по умолчанию)
 let fzv = {};           // сколько из сваренного ушло в морозилку (pid → текст)
 let fridgeData = null, bkData = null, cardData = null, cardName = null, bkOpen = false;
+let sentCopy = null;   // что отправили на закрытии — вернуть по «Изменить подсчёт»
 let sel = new Set(), checks = new Set(), tkCards = null, photos = [];   // photos: {id, src, loading}
 let grD = null, grSel = null, grForm = {}, grZ = null, grPrev = null, grVac = null;   // grVac — форма отпуска/больничного   // grPrev — предпросмотр для админа   // вкладка «График»; grZ — день, на который пишем заявление
 let me = null, tab = 'today', cfg = null, names = null, who = null, hist = null, lastResult = null, draft = {};
@@ -2034,7 +2035,12 @@ const binds = {
   },
   count() {
     const again = document.getElementById('again');
-    if (again) again.onclick = () => { lastResult = null; render(); };
+    // «Изменить подсчёт»: возвращаем всё, что отправили (остатки, даты, морозилка, касса, чек-лист, фото)
+    if (again) again.onclick = () => {
+      lastResult = null;
+      if (sentCopy) { draft = JSON.parse(JSON.stringify(sentCopy.draft)); checks = new Set(sentCopy.checks); photos = sentCopy.photos.map(p => Object.assign({}, p)); saveDraft(); }
+      render();
+    };
     const btn = document.getElementById('send'); if (!btn) return;
     const cl = me.checklist || [];
     bindPhotos();
@@ -2214,7 +2220,7 @@ const binds = {
       }
       const cashWhy = cashChk && cashChk.res && cashChk.res.short ? { s1: !!cashChk.s1, s2: !!cashChk.s2, note: (cashChk.note || '').trim() } : null, cashFirst = cashChk ? cashChk.first : null;
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values, rq, fq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
+      try { lastResult = await call('count', { values, rq, fq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); sentCopy = { draft: JSON.parse(JSON.stringify(draft)), checks: [...checks], photos: photos.filter(p => p.id).map(p => Object.assign({}, p)) }; draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
