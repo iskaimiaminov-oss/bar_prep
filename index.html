@@ -83,6 +83,13 @@
   .brow{display:flex;align-items:center;gap:10px;padding:5px 0}
   .brow span{flex:1;min-width:0;font-size:14px;color:var(--muted)}
   .brow span b{color:var(--forest);font-weight:600}
+  .bcap{font-size:12px;color:var(--muted);padding:4px 0 0}
+  .brow .bdate{flex:1;min-width:0;height:42px;border:1.5px solid transparent;background:var(--cream);border-radius:12px;padding:0 8px;font-size:15px;color:var(--forest);font-family:inherit;outline:none;-webkit-appearance:none;appearance:none}
+  .brow .bdate:focus{border-color:var(--olive);background:var(--focus)}
+  .brow .bdate.bad,.bsub .field.bad{border-color:var(--danger)}
+  .bbtn{flex:none;width:40px;height:40px;border-radius:12px;border:0;background:var(--olive-soft);color:var(--forest);font-size:22px;line-height:1;font-family:inherit;padding:0}
+  .bbtn.del{background:none;color:var(--muted);font-size:20px;width:28px}
+  .brow .frzl{flex:1;font-size:14px;color:var(--forest)}
   .field input[readonly]{color:var(--olive);cursor:default}
   .pname{flex:1;min-width:0}
   .pname b{display:block;font-weight:500;font-size:16px;word-break:break-word}
@@ -394,6 +401,33 @@ async function fixBig(list) {
   }
   if (done.length) toast('Поправил: ' + done.join(', '));
   return true;
+}
+// ===== Закрытие: остатки строками «сколько + дата с наклейки» (плюсик — ещё дата), у замораживаемых — ещё морозилка =====
+const tashDay = () => new Date(Date.now() + 5 * 36e5).toISOString().slice(0, 10);
+function closeRows(p) {   // черновик, иначе даты партий в холодильнике, иначе одна пустая строка
+  const dr = draft['r:' + p.id];
+  if (Array.isArray(dr) && dr.length) return dr;
+  const out = [], seen = {};
+  ((me.cb || {})[p.id] || []).forEach(x => { if (x.day && !seen[x.day]) { seen[x.day] = 1; out.push({ q: '', d: x.day }); } });
+  return out.length ? out : [{ q: '', d: '' }];
+}
+// строки, где не заполнено ничего, не считаем; сумма — только когда у всех остальных есть число
+function closeSum(rows) {
+  const rs = rows.filter(r => String(r.q).trim() !== '' || r.d);
+  if (!rs.length) return '';
+  let t = 0;
+  for (const r of rs) { const v = toNum(r.q); if (v === '' || isNaN(v) || v < 0) return ''; t += v; }
+  return fmt(t);
+}
+function closeRowsHtml(p) {
+  const rows = closeRows(p), many = rows.length > 1, td = tashDay();
+  return `<div class="bcap">Сколько осталось · дата на наклейке</div>` + rows.map((r, k) => `<div class="brow" data-ri="${k}">
+      <label class="field"><input inputmode="decimal" enterkeyhint="next" data-rq="${esc(p.id)}" value="${esc(r.q)}" placeholder="0"><small>${esc(p.unit)}</small></label>
+      <input type="date" class="bdate" data-rd="${esc(p.id)}" value="${esc(r.d || '')}" max="${td}">
+      ${many ? `<button class="bbtn del" data-rdel="${esc(p.id)}" aria-label="Убрать строку">×</button>` : ''}
+      ${k === rows.length - 1 ? `<button class="bbtn" data-radd="${esc(p.id)}" aria-label="Ещё дата">+</button>` : ''}
+    </div>`).join('') +
+    (p.frz ? `<div class="brow"><span class="frzl">❄️ В морозилке</span><label class="field"><input inputmode="decimal" enterkeyhint="next" data-fq="${esc(p.id)}" value="${esc(draft['f:' + p.id] != null ? draft['f:' + p.id] : '')}" placeholder="0"><small>${esc(p.unit)}</small></label></div>` : '');
 }
 const ICONS = ['🍯','🍋','🫙','🧴','🍓','🌿','🥛','🍊','🫐','🍵'];
 const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % ICONS.length];
@@ -1614,18 +1648,13 @@ const views = {
       return empty(works ? '☕' : '🌿', works ? first + ', ты сегодня не закрываешь, отдыхай💋' : first + ', ты сегодня не работаешь, отдыхай💋', who);
     }
     if (!me.preps.length) return empty('🫙', 'Заготовок пока нет', me.isAdmin ? 'Добавь их во вкладке «Заготовки».' : 'Администратор ещё не добавил список.');
-    // в холодильнике 2 партии и больше — считаем каждую дату отдельно, сумма считается сама
-    const bd = ts => new Date(ts).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+    // каждая заготовка: строки «остаток + дата» (плюсик — ещё дата), сверху сумма по холодильнику; у замораживаемых — ещё морозилка
     const rows = me.preps.map(p => {
-      const cb = (me.cb || {})[p.id];
-      let v = draft[p.id] != null ? draft[p.id] : '';
-      if (cb) { let t = 0; v = cb.every(x => { const y = toNum(draft['b:' + x.id] != null ? draft['b:' + x.id] : ''); if (y === '' || isNaN(y) || y < 0) return false; t += y; return true; }) ? fmt(t) : ''; }
-      const low = v !== '' && toNum(v) < p.min;
+      const v = closeSum(closeRows(p)), low = v !== '' && toNum(v) < p.min;
       return `<div class="prow ${low ? 'low' : ''}" data-min="${p.min}">
-        <div class="pname"><b>${esc(p.name)}<span class="tag">варить</span></b><span>минимум ${fmt(p.min)} ${esc(p.unit)}${cb ? ' · <b style="display:inline;font-size:13px;color:var(--olive)">посчитай по датам ↓</b>' : ''}</span></div>
-        <label class="field"><input inputmode="decimal" enterkeyhint="next" data-id="${esc(p.id)}" value="${esc(v)}" placeholder="${cb ? 'сумма' : '0'}" ${cb ? 'readonly tabindex="-1"' : ''}><small>${esc(p.unit)}</small></label>
-      </div>` + (cb ? `<div class="bsub">${cb.map(x => `<div class="brow"><span>от <b>${esc(bd(x.d))}</b>${x.e ? ' · годна до ' + esc(bd(x.e)) : ''}</span>
-        <label class="field"><input inputmode="decimal" enterkeyhint="next" data-bid="${esc(x.id)}" data-bp="${esc(p.id)}" value="${esc(draft['b:' + x.id] != null ? draft['b:' + x.id] : '')}" placeholder="0"><small>${esc(p.unit)}</small></label></div>`).join('')}</div>` : '');
+        <div class="pname"><b>${esc(p.name)}<span class="tag">варить</span></b><span>минимум ${fmt(p.min)} ${esc(p.unit)}${p.frz ? ' · сумма — без морозилки' : ''}</span></div>
+        <label class="field"><input inputmode="decimal" data-id="${esc(p.id)}" value="${esc(v)}" placeholder="сумма" readonly tabindex="-1"><small>${esc(p.unit)}</small></label>
+      </div><div class="bsub" data-rp="${esc(p.id)}">${closeRowsHtml(p)}</div>`;
     }).join('');
     const last = me.last ? `<p class="sub">Последний подсчёт: ${esc(me.last.by)}, ${fmtTs(me.last.ts)}</p>` : `<p class="sub">Внеси, сколько осталось каждой заготовки</p>`;
     const cl = me.checklist || [];
@@ -2014,14 +2043,34 @@ const binds = {
       try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
     });
     const inputs = [...document.querySelectorAll('input[data-id]')];
-    // по датам: каждая партия своим полем, общий остаток заготовки = сумма (пока не заполнены все даты — пусто)
-    const subs = [...document.querySelectorAll('input[data-bid]')];
-    const sumOf = pid => { let t = 0; for (const x of subs.filter(y => y.dataset.bp === pid)) { const v = toNum(x.value); if (v === '' || isNaN(v) || v < 0) return ''; t += v; } return fmt(t); };
-    subs.forEach(x => x.addEventListener('input', () => {
-      draft['b:' + x.dataset.bid] = x.value; x.parentNode.classList.remove('bad');
-      const m = inputs.find(i => i.dataset.id === x.dataset.bp); if (m) { m.value = sumOf(x.dataset.bp); m.dispatchEvent(new Event('input')); }
-    }));
-    inputs.filter(i => i.readOnly).forEach(i => i.onclick = () => { const f = subs.find(x => x.dataset.bp === i.dataset.id && x.value.trim() === '') || subs.find(x => x.dataset.bp === i.dataset.id); if (f) f.focus(); });
+    // строки «остаток + дата»: сумма по холодильнику — в поле заготовки; плюсик — ещё строка, × — убрать
+    const boxOf = pid => document.querySelector(`.bsub[data-rp="${CSS.escape(pid)}"]`);
+    const readRows = pid => [...boxOf(pid).querySelectorAll('.brow[data-ri]')].map(r => ({ q: r.querySelector('[data-rq]').value, d: r.querySelector('[data-rd]').value }));
+    const syncSum = pid => { const m = inputs.find(i => i.dataset.id === pid); if (m) { m.value = closeSum(readRows(pid)); m.dispatchEvent(new Event('input')); } };
+    const redraw = (pid, rows, focusK) => {
+      draft['r:' + pid] = rows; saveDraft();
+      const p = me.preps.find(x => x.id === pid), box = boxOf(pid); box.innerHTML = closeRowsHtml(p);
+      syncSum(pid);
+      if (focusK != null) { const f = box.querySelectorAll('[data-rq]')[focusK]; if (f) f.focus(); }
+    };
+    document.querySelectorAll('.bsub[data-rp]').forEach(box => {
+      const pid = box.dataset.rp;
+      box.addEventListener('input', e => {
+        const t = e.target;
+        if (t.dataset.fq != null) { draft['f:' + pid] = t.value; t.parentNode.classList.remove('bad'); saveDraft(); syncBtn(); return; }
+        if (t.dataset.rq == null && t.dataset.rd == null) return;
+        (t.dataset.rd != null ? t : t.parentNode).classList.remove('bad');
+        draft['r:' + pid] = readRows(pid); saveDraft(); syncSum(pid);
+      });
+      box.addEventListener('change', e => { if (e.target.dataset.rd != null) { e.target.classList.remove('bad'); draft['r:' + pid] = readRows(pid); saveDraft(); syncSum(pid); } });
+      box.addEventListener('click', e => {
+        const b = e.target.closest('button'); if (!b) return;
+        const rows = readRows(pid);
+        if (b.dataset.radd != null) { rows.push({ q: '', d: '' }); redraw(pid, rows, rows.length - 1); try { tg.HapticFeedback.selectionChanged(); } catch (e) {} }
+        else if (b.dataset.rdel != null) { rows.splice(+b.closest('.brow').dataset.ri, 1); redraw(pid, rows.length ? rows : [{ q: '', d: '' }]); }
+      });
+    });
+    inputs.forEach(i => i.onclick = () => { const box = boxOf(i.dataset.id); if (!box) return; const f = [...box.querySelectorAll('[data-rq]')].find(x => x.value.trim() === '') || box.querySelector('[data-rq]'); if (f) f.focus(); });
     const cashIn = [...document.querySelectorAll('input[data-cash]')], cashVal = k => { const i = cashIn.find(x => x.dataset.cash === k); return i ? parseMoney(i.value) : NaN; };
     // подсказка: что уже записано из кассы через «Наличные» (бот вычтет это из остатка iiko)
     const cashHint = () => {
@@ -2089,7 +2138,7 @@ const binds = {
     const MIN_PH = 3;
     const missing = () => {
       const m = [], cMiss = cl.length - checks.size, ph = photos.filter(p => p.id).length;
-      const vMiss = inputs.filter(i => i.value.trim() === '').length;
+      const vMiss = inputs.filter(i => i.value.trim() === '').length + [...document.querySelectorAll('input[data-fq]')].filter(i => i.value.trim() === '').length;
       if (cMiss > 0) m.push(cMiss + ' ' + (cMiss === 1 ? 'пункт' : cMiss < 5 ? 'пункта' : 'пунктов'));
       if (ph < MIN_PH) m.push((MIN_PH - ph) + ' фото');
       if (vMiss > 0) m.push(vMiss + ' ' + (vMiss === 1 ? 'остаток' : vMiss < 5 ? 'остатка' : 'остатков'));
@@ -2126,17 +2175,23 @@ const binds = {
     });
     btn.onclick = async () => {
       if ((me.offAsk || []).length) { toast('Сначала ответь про списанные ботом заготовки'); haptic('error'); const o = document.querySelector('[data-offok]'); if (o) o.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
-      // по датам: сначала поправим 1600 → 1,6 в полях партий, потом соберём { id партии: остаток }
-      const sc = subs.filter(x => toNum(x.value) !== '' && !isNaN(toNum(x.value))).map(x => { const p = me.preps.find(y => y.id === x.dataset.bp) || {}; return { v: toNum(x.value), unit: p.unit, name: p.name, inp: x }; });
-      await fixBig(sc);
-      if (subs.some(x => { const v = toNum(x.value); return v !== '' && (isNaN(v) || v < 0); })) { toast('Проверь числа по датам — есть ошибка'); haptic('error'); return; }
-      const bq = {}; subs.forEach(x => { const v = toNum(x.value); if (v !== '') bq[x.dataset.bid] = v; });
-      const values = {}; let emptyN = 0, bad = 0;
-      inputs.forEach(i => { const v = toNum(i.value); if (v === '') emptyN++; else if (isNaN(v) || v < 0) bad++; else values[i.dataset.id] = v; });
-      if (bad) { toast('Проверь числа — есть ошибка'); haptic('error'); return; }
-      const chk = Object.keys(values).map(pid => { const p = me.preps.find(x => x.id === pid) || {}; return { pid, v: values[pid], unit: p.unit, name: p.name, inp: inputs.find(i => i.dataset.id === pid) }; });
-      if (!(await fixBig(chk))) { haptic('error'); return; }
-      chk.forEach(c => values[c.pid] = c.v);
+      // строки по датам и морозилка: сначала поправим 1600 → 1,6, потом проверим числа и даты
+      const qIn = [...document.querySelectorAll('input[data-rq], input[data-fq]')];
+      const pOf = x => me.preps.find(y => y.id === (x.dataset.rq || x.dataset.fq)) || {};
+      await fixBig(qIn.filter(x => toNum(x.value) !== '' && !isNaN(toNum(x.value))).map(x => { const p = pOf(x); return { v: toNum(x.value), unit: p.unit, name: p.name, inp: x }; }));
+      const badQ = qIn.filter(x => { const v = toNum(x.value); return v !== '' && (isNaN(v) || v < 0); });
+      if (badQ.length) { badQ.forEach(x => x.parentNode.classList.add('bad')); badQ[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); toast('Проверь числа — есть ошибка'); haptic('error'); return; }
+      // остаток больше нуля — нужна дата с наклейки, и не из будущего
+      const td = tashDay(), badD = [...document.querySelectorAll('.brow[data-ri]')].map(r => r.querySelector('[data-rd]')).filter(d => { const q = toNum(d.closest('.brow').querySelector('[data-rq]').value); return (q !== '' && q > 0 && !d.value) || (d.value && d.value > td); });
+      if (badD.length) { badD.forEach(d => d.classList.add('bad')); badD[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); toast(badD[0].value ? 'Дата на наклейке не может быть из будущего' : 'Укажи дату с наклейки у каждого остатка'); haptic('error'); return; }
+      const values = {}, rq = {}, fq = {};
+      me.preps.forEach(p => {
+        const box = boxOf(p.id); if (!box) return;
+        const rs = readRows(p.id).filter(r => String(r.q).trim() !== '' || r.d), s = closeSum(rs);
+        if (s === '') return;
+        values[p.id] = toNum(s); rq[p.id] = rs.map(r => ({ q: toNum(r.q), d: r.d }));
+      });
+      document.querySelectorAll('input[data-fq]').forEach(i => { const v = toNum(i.value); if (v !== '') fq[i.dataset.fq] = v; });
       const cash = { ik: cashVal('ik'), cf: cashVal('cf'), env: cashVal('env') };
       if (photos.some(p => p.loading)) { toast('Подожди, фото ещё загружаются…'); return; }
       const m = missing();
@@ -2156,7 +2211,7 @@ const binds = {
       }
       const cashWhy = cashChk && cashChk.res && cashChk.res.short ? { s1: !!cashChk.s1, s2: !!cashChk.s2, note: (cashChk.note || '').trim() } : null, cashFirst = cashChk ? cashChk.first : null;
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values, bq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
+      try { lastResult = await call('count', { values, rq, fq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
