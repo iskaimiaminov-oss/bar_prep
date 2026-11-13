@@ -83,6 +83,9 @@
   .brow{display:flex;align-items:center;gap:10px;padding:5px 0}
   .brow span{flex:1;min-width:0;font-size:14px;color:var(--muted)}
   .brow span b{color:var(--forest);font-weight:600}
+  .pblock{border:1.5px solid var(--line);border-radius:16px;padding:2px 12px 8px;margin:12px 0}
+  .pblock .prow{border-bottom:0;padding-bottom:6px}
+  .pblock .bsub{margin:0;padding:0;border:0;border-top:1px dashed var(--line)}
   .bcap{font-size:12px;color:var(--muted);padding:4px 0 0}
   .brow .bdate{flex:1;min-width:0;height:42px;border:1.5px solid transparent;background:var(--cream);border-radius:12px;padding:0 8px;font-size:15px;color:var(--forest);font-family:inherit;outline:none;-webkit-appearance:none;appearance:none}
   .brow .bdate:focus{border-color:var(--olive);background:var(--focus)}
@@ -1651,10 +1654,10 @@ const views = {
     // каждая заготовка: строки «остаток + дата» (плюсик — ещё дата), сверху сумма по холодильнику; у замораживаемых — ещё морозилка
     const rows = me.preps.map(p => {
       const v = closeSum(closeRows(p)), low = v !== '' && toNum(v) < p.min;
-      return `<div class="prow ${low ? 'low' : ''}" data-min="${p.min}">
+      return `<div class="pblock"><div class="prow ${low ? 'low' : ''}" data-min="${p.min}">
         <div class="pname"><b>${esc(p.name)}<span class="tag">варить</span></b><span>минимум ${fmt(p.min)} ${esc(p.unit)}${p.frz ? ' · сумма — без морозилки' : ''}</span></div>
         <label class="field"><input inputmode="decimal" data-id="${esc(p.id)}" value="${esc(v)}" placeholder="сумма" readonly tabindex="-1"><small>${esc(p.unit)}</small></label>
-      </div><div class="bsub" data-rp="${esc(p.id)}">${closeRowsHtml(p)}</div>`;
+      </div><div class="bsub" data-rp="${esc(p.id)}">${closeRowsHtml(p)}</div></div>`;
     }).join('');
     const last = me.last ? `<p class="sub">Последний подсчёт: ${esc(me.last.by)}, ${fmtTs(me.last.ts)}</p>` : `<p class="sub">Внеси, сколько осталось каждой заготовки</p>`;
     const cl = me.checklist || [];
