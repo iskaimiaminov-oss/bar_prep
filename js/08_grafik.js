@@ -183,7 +183,8 @@ const GRC_SH = [['M', 'Утро'], ['E', 'Вечер'], ['Mid', 'Середин�
 const grcState = v => typeof v !== 'number' ? 'no' : v === 0 ? 'ok' : v < 10 ? 'less' : 'rare';
 const GRC_IC = { ok: '✅', less: '🟡', rare: '🟠', no: '⛔' };
 const GRC_NEXT = { ok: 5, less: 20, rare: null, no: 0 };
-const grcNeedRows = [['mWk', 'Утро, пн–чт'], ['mWe', 'Утро, пт–вс'], ['eWk', 'Вечер, пн–чт', 'плюс стажёр или середина до 19:00'], ['eWe', 'Вечер, пт–вс']];
+const grcNeedRows = [['mWk', 'Утро, пн–чт'], ['mWe', 'Утро, пт–вс'], ['eWk', 'Вечер, пн–чт', 'плюс стажёр или середина'], ['eWe', 'Вечер, пт–вс'], ['mid', 'Середина 9:00–19:00, пн–пт', '0 — середину не ставить']];
+const GRC_NMIN = { mid: 0 }, GRC_NMAX = { mid: 2 };
 const grcDm = s => s ? s.slice(8, 10) + '.' + s.slice(5, 7) : '';
 function grCfgView() {
   const c = grCfgD;
@@ -217,7 +218,7 @@ function grCfgView() {
   out += card(`<h2>👥 Сколько людей на смене</h2><p class="sub">Для режима «${esc(m.name)}». У каждого режима свои числа</p>
     ${grcNeedRows.map(([k, t, sub]) => `<div class="grrow"><div class="grday"><b>${t}</b>${sub ? `<span>${sub}</span>` : ''}</div><button class="grbtn" data-grcn="${k}:-1">−</button><b class="grcn">${nd[k]}</b><button class="grbtn" data-grcn="${k}:1">+</button></div>`).join('')}
     ${grCfgNeed ? `<div class="two"><button class="btn" id="grcNSave">Сохранить</button><button class="btn soft" id="grcNNo">Отмена</button></div>` : ''}
-    ${!grCfgNeed && ['mWk', 'mWe', 'eWk', 'eWe'].some(k => m.need[k] !== m.def[k]) ? `<button class="btn soft" id="grcNDef">Вернуть как было (${m.def.mWk} / ${m.def.mWe} / ${m.def.eWk} / ${m.def.eWe})</button>` : ''}`);
+    ${!grCfgNeed && ['mWk', 'mWe', 'eWk', 'eWe', 'mid'].some(k => m.need[k] !== m.def[k]) ? `<button class="btn soft" id="grcNDef">Вернуть как было (${m.def.mWk} / ${m.def.mWe} / ${m.def.eWk} / ${m.def.eWe} / середина ${m.def.mid})</button>` : ''}`);
   out += card(`<h2>🧑‍🍳 Сотрудники</h2><p class="sub">Нажми на человека: уровень, с какого числа выходит, какие смены и в какие дни можно</p>
     <div class="grlist2">${c.ppl.map((x, i) => `<div class="grrow grcp" data-grcp="${i}"><div class="grday"><b>${esc(x.name)}</b><span>${[GRC_LV[x.level] || '⚠️ без уровня — бот не ставит', x.skip ? '🚫 не в графике' : '', x.from ? '🗓 с ' + grcDm(x.from) : '', x.full ? 'фулл можно' : '', x.custom ? '✏️ свои правила' : ''].filter(Boolean).join(' · ')}</span></div><span class="grbtn">›</span></div>`).join('')}</div>`);
   return out;
@@ -239,7 +240,7 @@ function grCfgBind() {
   document.querySelectorAll('[data-grcn]').forEach(b => b.onclick = () => {
     const [k, dv] = b.dataset.grcn.split(':'), m = grCfgD.modes.find(y => y.id === grCfgD.mode);
     grCfgNeed = grCfgNeed || Object.assign({}, m.need);
-    grCfgNeed[k] = Math.max(1, Math.min(8, grCfgNeed[k] + Number(dv)));
+    grCfgNeed[k] = Math.max(GRC_NMIN[k] != null ? GRC_NMIN[k] : 1, Math.min(GRC_NMAX[k] || 8, (grCfgNeed[k] || 0) + Number(dv)));
     try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
     render();
   });
