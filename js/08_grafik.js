@@ -200,7 +200,7 @@ function grCfgView() {
     out += card(`<h2>👤 ${esc(p.name)}</h2>
       <h3>Уровень</h3><div class="grcchips">${Object.keys(GRC_LV).map(l => `<button class="grbtn ${p.level === l ? 'on' : ''}" data-grclv="${l}">${GRC_LV[l]}</button>`).join('')}</div>
       <h3>Выходит с</h3><p class="sub">Новенький или после отпуска: до этой даты бот не ставит смены. Пусто — работает как обычно</p>
-      <div class="form two"><input type="date" id="grcFrom" value="${esc(p.from || '')}"><button class="btn soft" id="grcFromX">Очистить</button></div>
+      <div class="grcfrom"><input type="date" id="grcFrom" value="${esc(p.from || '')}"><button class="btn soft" id="grcFromX">Очистить</button></div>
       <h3>Смены по дням недели</h3><p class="sub">Нажми на клетку, чтобы поменять: ✅ можно · 🟡 можно, но реже · 🟠 только если иначе никак · ⛔ нельзя</p>
       <table class="grcgrid"><tr><th></th>${GRC_SH.map(x => `<th>${x[1]}</th>`).join('')}</tr>${cells}</table>
       <button class="btn soft" id="grcByLv">Заполнить как обычно у уровня «${GRC_LV[p.level] || '—'}»</button>

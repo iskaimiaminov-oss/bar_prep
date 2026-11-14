@@ -54,7 +54,11 @@
   .tabs{display:flex;gap:4px;overflow-x:auto;position:relative;background:var(--card);border-radius:999px;padding:5px;box-shadow:0 6px 20px rgba(10,51,32,.10);scrollbar-width:none}
   .tabs::-webkit-scrollbar{display:none}
   .tabs-wrap,.tabs{-webkit-transform:translateZ(0);transform:translateZ(0);-webkit-backface-visibility:hidden;backface-visibility:hidden}   /* свой слой: iOS в Телеграме иначе не рисовал полосу до касания */
-  #grCfgBtn{margin:0 0 12px}
+  #grCfgBtn,#grcBack{margin:0 0 12px}
+  .grcfrom{display:flex;gap:10px;align-items:stretch;margin:8px 0 4px}
+  .grcfrom input{flex:1;min-width:0;width:auto;border:1.5px solid transparent;background:var(--cream);color:inherit;border-radius:12px;padding:11px 12px;outline:none;font:inherit}
+  .grcfrom input:focus{border-color:var(--olive);background:var(--focus)}
+  .grcfrom .btn{width:auto;flex:0 0 auto;margin:0;padding:12px 18px}
   .tab{flex:1 0 auto;border:0;background:none;padding:9px 12px;border-radius:999px;font-size:14px;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap;transition:.2s}
   .tab.on{background:var(--forest);color:var(--cream)}
   .tab{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
