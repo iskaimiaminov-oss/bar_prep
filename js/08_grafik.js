@@ -2,6 +2,7 @@
 Object.assign(views, {
   async grafik() {
     grD = grD || await call('grafik');
+    if (grCfgOn && grD.canEdit) { grCfgD = grCfgD || await call('grCfg'); return grCfgView(); }   // ⚙️ Настройки графика
     const d = grD, r = d.req;
     const dayS = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
     const dmS = s => s.slice(8, 10) + '.' + s.slice(5, 7);
@@ -45,6 +46,7 @@ Object.assign(views, {
     else if (!d.isAdmin) out += empty('🗓', 'Сейчас сбор выходных не идёт', 'Когда админ начнёт составлять график, бот пришлёт сообщение — отметишь дни здесь или кнопками в чате');
     if (!d.isAdmin) return out;
     if (!d.canEdit) out += `<p class="sub" style="margin:0 0 8px">👀 График — только просмотр: составляет и меняет админ</p>`;
+    else out += `<button class="btn soft" id="grCfgBtn">⚙️ Настройки графика: режим потока, люди, смены</button>`;
     // админ: по дням — сколько выходных занято (из скольки можно) и кто взял
     if (r) {
       const wdL = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'long', timeZone: 'UTC' });
@@ -69,6 +71,7 @@ Object.assign(views, {
     else if (dr) {
       const st = { done: '✅ внесён в лист «' + dr.month + '»', new: 'ждёт решения', approved: '✅ утверждён — перенесён в лист «' + dr.month + '»', manual: '✍️ оставлен — правишь сам' }[dr.status] || dr.status;
       out += card(`<h2>🧩 График ${dmS(dr.from)}–${dmS(dr.to)}</h2><p class="sub">Лист «${esc(dr.sheet)}» · ${esc(st)}</p>
+        ${dr.mode ? `<p class="sub">⚙️ Режим: ${esc(dr.mode)}</p>` : ''}
         ${dr.wishes ? `<p class="sub">🌴 Желаемые выходные: учтено ${dr.wishOk} из ${dr.wishes}</p>` : ''}
         ${dr.notes.length ? `<p class="sub">${dr.notes.map(x => '🕖 ' + esc(x)).join('<br>')}</p>` : ''}
         ${dr.issues.length ? `<h3>⚠️ Не сходится с правилами (${dr.issues.length})</h3><ul class="grlist">${dr.issues.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="sub">✅ Все правила соблюдены</p>'}
@@ -84,6 +87,8 @@ Object.assign(views, {
 
 Object.assign(binds, {
   grafik() {
+    if (grCfgOn) return grCfgBind();
+    const cb = document.getElementById('grCfgBtn'); if (cb) cb.onclick = () => { grCfgOn = true; grCfgD = null; grCfgP = null; grCfgNeed = null; render.toTop = true; render(); window.scrollTo(0, 0); };
     const act = async (btn, action, payload, ok) => {
       if (btn) btn.disabled = true;
       try { const r = await call(action, payload); grD = r; grSel = null; if (r.msg) toast(r.msg); else if (ok) toast(ok); haptic('success'); render(); return r; }
@@ -168,3 +173,95 @@ Object.assign(binds, {
     const gn = document.getElementById('grGenNow'); if (gn) gn.onclick = () => act(gn, 'grGen', { from: v('grFrom'), to: v('grTo') }, 'Составляю — пришлю в бот через пару минут ⏳');
   },
 });
+
+// ===== «Настройки графика» (только админ): режим потока, сколько людей на смене, правила по сотрудникам =====
+let grCfgOn = false, grCfgD = null, grCfgP = null, grCfgNeed = null;   // grCfgP — правим сотрудника (копия), grCfgNeed — правим «сколько людей»
+const GRC_LV = { S: 'Старший', P: 'Про', B: 'Бариста', T: 'Стажёр' };
+const GRC_WD = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const GRC_SH = [['M', 'Утро'], ['E', 'Вечер'], ['Mid', 'Середина']];
+// клетка: ✅ можно (0) · 🟡 реже (1–9) · 🟠 редко (10+) · ⛔ нельзя (нет)
+const grcState = v => typeof v !== 'number' ? 'no' : v === 0 ? 'ok' : v < 10 ? 'less' : 'rare';
+const GRC_IC = { ok: '✅', less: '🟡', rare: '🟠', no: '⛔' };
+const GRC_NEXT = { ok: 5, less: 20, rare: null, no: 0 };
+const grcNeedRows = [['mWk', 'Утро, пн–чт'], ['mWe', 'Утро, пт–вс'], ['eWk', 'Вечер, пн–чт', 'плюс стажёр или середина до 19:00'], ['eWe', 'Вечер, пт–вс']];
+const grcDm = s => s ? s.slice(8, 10) + '.' + s.slice(5, 7) : '';
+function grCfgView() {
+  const c = grCfgD;
+  if (!c) return card('<p class="sub">Загружаю настройки…</p>');
+  let out = `<button class="btn soft" id="grcBack">← ${grCfgP ? 'К списку' : 'К графику'}</button>`;
+  const p = grCfgP;
+  if (p) {   // карточка сотрудника
+    const cells = [1, 2, 3, 4, 5, 6, 7].map(w => `<tr><th>${GRC_WD[w]}</th>${GRC_SH.map(([s]) => {
+      if (s === 'Mid' && w >= 6) return '<td class="grcx">—</td>';
+      const st = grcState((p.grid[w] || {})[s]);
+      return `<td><button class="grcell ${st}" data-grcc="${w}:${s}">${GRC_IC[st]}</button></td>`; }).join('')}</tr>`).join('');
+    out += card(`<h2>👤 ${esc(p.name)}</h2>
+      <h3>Уровень</h3><div class="grcchips">${Object.keys(GRC_LV).map(l => `<button class="grbtn ${p.level === l ? 'on' : ''}" data-grclv="${l}">${GRC_LV[l]}</button>`).join('')}</div>
+      <h3>Выходит с</h3><p class="sub">Новенький или после отпуска: до этой даты бот не ставит смены. Пусто — работает как обычно</p>
+      <div class="form two"><input type="date" id="grcFrom" value="${esc(p.from || '')}"><button class="btn soft" id="grcFromX">Очистить</button></div>
+      <h3>Смены по дням недели</h3><p class="sub">Нажми на клетку, чтобы поменять: ✅ можно · 🟡 можно, но реже · 🟠 только если иначе никак · ⛔ нельзя</p>
+      <table class="grcgrid"><tr><th></th>${GRC_SH.map(x => `<th>${x[1]}</th>`).join('')}</tr>${cells}</table>
+      <button class="btn soft" id="grcByLv">Заполнить как обычно у уровня «${GRC_LV[p.level] || '—'}»</button>
+      <h3>Ещё</h3>
+      <label class="grctg"><input type="checkbox" id="grcFull" ${p.full ? 'checked' : ''}> Можно фулл (утро + закрытие), только если иначе никак</label>
+      ${p.level === 'T' ? `<label class="grctg"><input type="checkbox" id="grcWeE" ${p.weE ? 'checked' : ''}> Стажёру можно закрывать в пт–вс</label>` : ''}
+      <label class="grctg"><input type="checkbox" id="grcSkip" ${p.skip ? 'checked' : ''}> Не ставить в график (бот его пропускает)</label>
+      <div class="two"><button class="btn" id="grcPSave">Сохранить</button><button class="btn soft" id="grcPNo">Отмена</button></div>
+      ${p.custom ? '<button class="btn soft" id="grcPReset">↩️ Вернуть правила как были</button>' : ''}`);
+    return out;
+  }
+  const m = c.modes.find(x => x.id === c.mode) || c.modes[0];
+  out += card(`<h2>⚙️ Настройки графика</h2><p class="sub">Всё, что здесь поменяешь, бот учтёт, когда в следующий раз нажмёшь «Составить» или «Пересоставить». Уже составленный график не меняется</p>
+    <h3>Режим потока</h3><div class="grcmodes">${c.modes.map(x => `<button class="grcmode ${x.id === c.mode ? 'on' : ''}" data-grcm="${x.id}"><b>${x.id === 'lo' ? '📉' : '📈'} ${esc(x.name)}</b><span>${esc(x.sub)}</span></button>`).join('')}</div>`);
+  const nd = grCfgNeed || m.need;
+  out += card(`<h2>👥 Сколько людей на смене</h2><p class="sub">Для режима «${esc(m.name)}». У каждого режима свои числа</p>
+    ${grcNeedRows.map(([k, t, sub]) => `<div class="grrow"><div class="grday"><b>${t}</b>${sub ? `<span>${sub}</span>` : ''}</div><button class="grbtn" data-grcn="${k}:-1">−</button><b class="grcn">${nd[k]}</b><button class="grbtn" data-grcn="${k}:1">+</button></div>`).join('')}
+    ${grCfgNeed ? `<div class="two"><button class="btn" id="grcNSave">Сохранить</button><button class="btn soft" id="grcNNo">Отмена</button></div>` : ''}
+    ${!grCfgNeed && ['mWk', 'mWe', 'eWk', 'eWe'].some(k => m.need[k] !== m.def[k]) ? `<button class="btn soft" id="grcNDef">Вернуть как было (${m.def.mWk} / ${m.def.mWe} / ${m.def.eWk} / ${m.def.eWe})</button>` : ''}`);
+  out += card(`<h2>🧑‍🍳 Сотрудники</h2><p class="sub">Нажми на человека: уровень, с какого числа выходит, какие смены и в какие дни можно</p>
+    <div class="grlist2">${c.ppl.map((x, i) => `<div class="grrow grcp" data-grcp="${i}"><div class="grday"><b>${esc(x.name)}</b><span>${[GRC_LV[x.level] || '⚠️ без уровня — бот не ставит', x.skip ? '🚫 не в графике' : '', x.from ? '🗓 с ' + grcDm(x.from) : '', x.full ? 'фулл можно' : '', x.custom ? '✏️ свои правила' : ''].filter(Boolean).join(' · ')}</span></div><span class="grbtn">›</span></div>`).join('')}</div>`);
+  return out;
+}
+function grCfgBind() {
+  const save = async (btn, payload, ok) => {
+    if (btn) btn.disabled = true;
+    try { grCfgD = await call('grCfgSave', payload); toast(ok); haptic('success'); render(); return true; }
+    catch (e) { toast(e.message); if (btn) btn.disabled = false; return false; }
+  };
+  const $ = id => document.getElementById(id);
+  const bk = $('grcBack'); if (bk) bk.onclick = () => { if (grCfgP) grCfgP = null; else { grCfgOn = false; grCfgNeed = null; } render.toTop = true; render(); };
+  document.querySelectorAll('[data-grcm]').forEach(b => b.onclick = async () => {
+    const id = b.dataset.grcm; if (id === grCfgD.mode) return;
+    const x = grCfgD.modes.find(y => y.id === id);
+    if (!(await confirmBox(`Включить режим «${x.name}» (${x.sub})? Сработает при следующем «Составить»`))) return;
+    grCfgNeed = null; save(b, { mode: id }, 'Режим: ' + x.name + ' ✅');
+  });
+  document.querySelectorAll('[data-grcn]').forEach(b => b.onclick = () => {
+    const [k, dv] = b.dataset.grcn.split(':'), m = grCfgD.modes.find(y => y.id === grCfgD.mode);
+    grCfgNeed = grCfgNeed || Object.assign({}, m.need);
+    grCfgNeed[k] = Math.max(1, Math.min(8, grCfgNeed[k] + Number(dv)));
+    try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
+    render();
+  });
+  const ns = $('grcNSave'); if (ns) ns.onclick = async () => { if (await save(ns, { need: Object.assign({ mode: grCfgD.mode }, grCfgNeed) }, 'Сохранил 👥')) { grCfgNeed = null; render(); } };
+  const nn = $('grcNNo'); if (nn) nn.onclick = () => { grCfgNeed = null; render(); };
+  const nd = $('grcNDef'); if (nd) nd.onclick = async () => { const m = grCfgD.modes.find(y => y.id === grCfgD.mode); if (await confirmBox('Вернуть числа как были?')) save(nd, { need: Object.assign({ mode: m.id }, m.def) }, 'Вернул как было'); };
+  document.querySelectorAll('[data-grcp]').forEach(r => r.onclick = () => { grCfgP = JSON.parse(JSON.stringify(grCfgD.ppl[Number(r.dataset.grcp)])); render.toTop = true; render(); window.scrollTo(0, 0); });
+  const p = grCfgP; if (!p) return;
+  const keep = () => { const f = $('grcFrom'); if (f) p.from = f.value; [['grcFull', 'full'], ['grcWeE', 'weE'], ['grcSkip', 'skip']].forEach(([id, k]) => { const el = $(id); if (el) p[k] = el.checked; }); };
+  document.querySelectorAll('[data-grclv]').forEach(b => b.onclick = () => { keep(); p.level = b.dataset.grclv; render(); });
+  document.querySelectorAll('[data-grcc]').forEach(b => b.onclick = () => {
+    keep(); const [w, s] = b.dataset.grcc.split(':'), g = p.grid[w] = p.grid[w] || {}, nv = GRC_NEXT[grcState(g[s])];
+    if (nv == null) delete g[s]; else g[s] = nv;
+    try { tg.HapticFeedback.selectionChanged(); } catch (e) {}
+    render();
+  });
+  const fx = $('grcFromX'); if (fx) fx.onclick = () => { keep(); p.from = ''; render(); };
+  const bl = $('grcByLv'); if (bl) bl.onclick = () => { keep(); if (!grCfgD.lv[p.level]) return toast('Сначала выбери уровень'); p.grid = JSON.parse(JSON.stringify(grCfgD.lv[p.level])); render(); };
+  const pn = $('grcPNo'); if (pn) pn.onclick = () => { grCfgP = null; render(); };
+  const ps = $('grcPSave'); if (ps) ps.onclick = async () => {
+    keep(); if (!p.level) return toast('Выбери уровень');
+    if (await save(ps, { person: { name: p.name, key: p.key, level: p.level, from: p.from, skip: p.skip, full: p.full, weE: p.weE, grid: p.grid } }, 'Сохранил — учту при следующем «Составить» ✅')) { grCfgP = null; render(); }
+  };
+  const pr = $('grcPReset'); if (pr) pr.onclick = async () => { if (await confirmBox('Вернуть правила «' + p.name + '» как были? Уровень останется')) { if (await save(pr, { reset: p.name }, 'Вернул как было')) { grCfgP = null; render(); } } };
+}
