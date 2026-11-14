@@ -131,3 +131,40 @@ const UNIT = u => { u = String(u || '').toLowerCase().replace('.', '').trim();
   return [u, 1]; };
 const conv = (x, from, to) => { const a = UNIT(from), b = UNIT(to); return a[0] === b[0] ? x * a[1] / b[1] : null; };
 function closeSheet() { const el = document.getElementById('sheet'); if (el) el.remove(); }
+// Нижние окна: потянул вниз за ручку/верх (или когда окно прокручено до самого верха) — окно едет за пальцем.
+// Отпустил дальше четверти высоты или быстро смахнул — закрывается так же, как тап по тёмному фону; иначе возвращается
+(function () {
+  let st = null;
+  document.addEventListener('touchstart', e => {
+    st = null;
+    const sh = e.target.closest && e.target.closest('#sheet .sheet');
+    if (!sh || e.touches.length > 1) return;
+    const t = e.touches[0], onTop = !!e.target.closest('.grab') || t.clientY - sh.getBoundingClientRect().top < 56;
+    if (!onTop && (sh.scrollTop > 0 || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))) return;
+    st = { sh: sh, y0: t.clientY, dy: 0, drag: false, onTop: onTop, last: [] };
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!st) return;
+    const y = e.touches[0].clientY, dy = y - st.y0;
+    if (!st.drag) {
+      if (dy < -4 || (!st.onTop && st.sh.scrollTop > 0)) { st = null; return; }   // вверх — обычная прокрутка окна
+      if (dy < 8) return;
+      st.drag = true; st.y0 = y;
+    }
+    st.dy = Math.max(0, y - st.y0);
+    st.last.push([Date.now(), st.dy]); if (st.last.length > 5) st.last.shift();
+    st.sh.style.transition = 'none'; st.sh.style.transform = 'translateY(' + st.dy + 'px)';
+    if (e.cancelable) e.preventDefault();   // не прокручивать страницу и не сворачивать мини-апп
+  }, { passive: false });
+  const end = () => {
+    const s = st; st = null;
+    if (!s || !s.drag) return;
+    const h = s.sh.offsetHeight, a0 = s.last[0], a1 = s.last[s.last.length - 1];
+    const v = a0 && a1 && a1[0] > a0[0] ? (a1[1] - a0[1]) / (a1[0] - a0[0]) : 0;   // px/мс
+    if (s.dy > h * 0.25 || (v > 0.5 && s.dy > 30)) {
+      s.sh.style.transition = 'transform .18s ease-in'; s.sh.style.transform = 'translateY(' + (h + 40) + 'px)';
+      setTimeout(() => { const w = document.getElementById('sheet'); if (!w || !w.contains(s.sh)) return; w.click(); if (document.body.contains(w)) closeSheet(); }, 170);
+    } else { s.sh.style.transition = 'transform .2s ease-out'; s.sh.style.transform = ''; }
+  };
+  document.addEventListener('touchend', end); document.addEventListener('touchcancel', end);
+})();
