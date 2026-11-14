@@ -12,9 +12,10 @@ function loadShift(date) {
   return shiftLoading[date];
 }
 // ---- «Мои смены», замены, проблемы, дни рождения ----
+let homeAt = 0;   // когда последний раз брали данные «Сегодня» — чаще раза в минуту фоном не переспрашиваем
 function getHome(force) {
   if (homeData && !force) return Promise.resolve(homeData);
-  if (!homeP || force) homeP = call('home').then(r => (homeData = r)).catch(e => { homeP = null; throw e; });
+  if (!homeP || force) homeP = call('home').then(r => { homeAt = Date.now(); return (homeData = r); }).catch(e => { homeP = null; throw e; });
   return homeP;
 }
 const hmS = m => Math.floor(m / 60) % 24 + ':' + String(m % 60).padStart(2, '0');
@@ -110,7 +111,7 @@ function bindHomeExtra() {
     bindGu(); bindSk();
   };
   if (homeData) fill(homeData); else box.innerHTML = card('<div class="wip">Загружаю…</div>');
-  getHome(!!homeData).then(fill).catch(() => {});
+  getHome(!!homeData && Date.now() - homeAt > 60e3).then(fill).catch(() => {});
 }
 // Заказ посуды: уходит задачей управляющим, бот напоминает раз в 3 дня, пока не закажут
 function openDish() {
@@ -314,8 +315,11 @@ Object.assign(binds, {
       const it = me.today.items.find(x => x.pid === b.dataset.thaw); if (!it) return;
       const q = await askQty('❄️ Разморозил: ' + it.name, 'В морозилке ' + fmt(it.frozen) + ' ' + esc(it.unit) + '. Срок хранения пойдёт с сегодняшнего дня', toNum(b.dataset.amt), it.unit, 'Отметить разморозку');
       if (q == null) return;
-      try { const r = await call('thaw', { pid: it.pid, q, today: true }); sel.delete(it.pid); fridgeData = null; haptic('success'); toast('Отмечено ❄️'); me = await call('me'); render(); askLabel(r && r.label); }
-      catch (er) { toast(er.message); }
+      const had = sel.has(it.pid); sel.delete(it.pid); toast('Отмечено ❄️');
+      try {   // сразу на экране; бот пришлёт свежие данные в том же ответе
+        const r = await quick('thaw', { pid: it.pid, q, today: true }, ['me', 'fridge'], () => { const t = me.today; t.made = t.made || {}; t.yields = t.yields || {}; t.thawed = t.thawed || {}; t.made[it.pid] = me.name; t.yields[it.pid] = q; t.thawed[it.pid] = 1; });
+        haptic('success'); askLabel(r && r.label);
+      } catch (er) { if (had) { sel.add(it.pid); render(); } }
     });
     document.querySelectorAll('[data-fz]').forEach(inp => inp.oninput = () => { fzv[inp.dataset.fz] = inp.value; });
     // «✏️ Выход» — исправить итоговый выход у уже отмеченной заготовки
@@ -324,17 +328,18 @@ Object.assign(binds, {
       const pid = b.dataset.yedit, p = me.preps.find(x => x.id === pid) || {}, cur = (me.today.yields || {})[pid];
       const q = await askQty('✏️ Выход: ' + (p.name || ''), 'Сейчас записано ' + fmt(cur) + ' ' + esc(p.unit || '') + '. Впиши, сколько получилось на самом деле', cur, p.unit, 'Сохранить');
       if (q == null || q === cur) return;
-      try { await call('editYield', { pid, q }); fridgeData = null; haptic('success'); toast('Выход исправлен ✅'); me = await call('me'); render(); }
-      catch (er) { toast(er.message); }
+      toast('Выход исправлен ✅');
+      try { await quick('editYield', { pid, q }, ['me', 'fridge'], () => { const t = me.today; t.yields = t.yields || {}; t.yEdit = t.yEdit || {}; t.yields[pid] = q; t.yEdit[pid] = me.name; }); haptic('success'); }
+      catch (er) {}
     });
     // 🗑 — удалить отметку, если отметили не ту заготовку (холодильник, отчёт и группа откатятся)
     document.querySelectorAll('[data-undo]').forEach(b => b.onclick = async e => {
       e.stopPropagation();
       const pid = b.dataset.undo, p = me.preps.find(x => x.id === pid) || {}, th = (me.today.thawed || {})[pid];
       if (!(await confirmBox('Удалить отметку «' + (p.name || '') + '»? ' + (th ? 'Разморозка вернётся в морозилку.' : 'Партия уберётся из холодильника и из отчёта.') + ' Потом можно отметить правильную заготовку.'))) return;
-      b.disabled = true;
-      try { await call('undoMade', { pid }); fridgeData = null; haptic('success'); toast('Отметка удалена'); me = await call('me'); render(); }
-      catch (er) { toast(er.message); b.disabled = false; }
+      toast('Отметка удалена');
+      try { await quick('undoMade', { pid }, ['me', 'fridge'], () => { const t = me.today; ['made', 'yields', 'thawed', 'yEdit'].forEach(k => { if (t[k]) delete t[k][pid]; }); if (t.done && t.items.some(i => i.pid === pid)) t.done = null; }); haptic('success'); }
+      catch (er) {}
     });
     const xb = document.getElementById('extraBox');
     if (xb) xb.addEventListener('toggle', () => { extraOpen = xb.open; });
@@ -379,9 +384,13 @@ Object.assign(binds, {
         if (isNaN(v) || v < 0 || v > yields[pid]) { inp.parentNode.classList.add('bad'); inp.focus(); haptic('error'); toast('В морозилку — не больше, чем сварено'); return; }
         freezes[pid] = v;
       }
-      btn.disabled = true; btn.textContent = 'Отмечаю…';
-      try { const r = await call('made', { pids: [...sel], yields: yields, freezes: freezes }); [...sel].forEach(pid => { delete yv[pid]; delete fzv[pid]; }); sel.clear(); fridgeData = null; haptic('success'); toast('Молодец! 💪'); me = await call('me'); render(); askLabel(r && r.label); }
-      catch (e) { toast(e.message); sync(); }
+      // сразу на экране: заготовки отмечены, бот сохраняет в фоне; не получилось — отметки вернутся, выбор и цифры останутся
+      const pids = [...sel];
+      sel.clear(); toast('Молодец! 💪');
+      try {
+        const r = await quick('made', { pids: pids, yields: yields, freezes: freezes }, ['me', 'fridge'], () => { const t = me.today; t.made = t.made || {}; t.yields = t.yields || {}; pids.forEach(pid => { t.made[pid] = me.name; t.yields[pid] = yields[pid]; }); });
+        pids.forEach(pid => { delete yv[pid]; delete fzv[pid]; }); haptic('success'); askLabel(r && r.label);
+      } catch (e) { pids.forEach(pid => sel.add(pid)); render(); }
     };
   },
 });

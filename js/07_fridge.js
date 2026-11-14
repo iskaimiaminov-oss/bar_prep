@@ -36,12 +36,15 @@ Object.assign(views, {
 
 Object.assign(binds, {
   fridge() {
-    const act = async (payload, okMsg) => {
-      try { const r = await call(payload.action, payload.data); fridgeData = null; haptic('success'); toast(okMsg); me = await call('me'); render(); askLabel(r && r.label); }
-      catch (e) { toast(e.message); }
+    // apply — что поменять на экране сразу (списание, «Закончилась», маркировка); остальное ждёт ответ бота, но одним запросом
+    const act = async (payload, okMsg, apply) => {
+      if (apply) toast(okMsg); else toast('Сохраняю…');
+      try { const r = await quick(payload.action, payload.data, ['fridge', 'me'], apply); haptic('success'); if (!apply) toast(okMsg); askLabel(r && r.label); }
+      catch (e) {}
     };
+    const drop = id => () => { fridgeData.batches = fridgeData.batches.filter(y => y.id !== id); };
     const find = id => fridgeData.batches.find(x => x.id === id);
-    document.querySelectorAll('[data-bmark]').forEach(b => b.onclick = () => act({ action: 'batchMark', data: { ids: [b.dataset.bmark] } }, 'Промаркировано 🏷'));
+    document.querySelectorAll('[data-bmark]').forEach(b => b.onclick = () => act({ action: 'batchMark', data: { ids: [b.dataset.bmark] } }, 'Промаркировано 🏷', () => { const x = find(b.dataset.bmark); if (x) x.mark = 0; }));
     document.querySelectorAll('[data-bret]').forEach(b => b.onclick = async () => {
       const x = (fridgeData.autoOff || []).find(y => y.id === b.dataset.bret); if (!x) return;
       if (!(await confirmBox(`Вернуть ${x.name} (${fmt(x.q)} ${x.unit})? Партия вернётся в холодильник и уйдёт из отчёта списаний. Потом отметь её: «Ещё живая» с датой с наклейки или «Закончилась».`))) return;
@@ -49,26 +52,27 @@ Object.assign(binds, {
     });
     document.querySelectorAll('[data-bused]').forEach(b => b.onclick = async () => {
       const x = find(b.dataset.bused); if (!x || !(await confirmBox(`${x.name} закончилась? Партия уберётся из списка.`))) return;
-      act({ action: 'batchDone', data: { id: x.id } }, 'Убрано ✅');
+      act({ action: 'batchDone', data: { id: x.id } }, 'Убрано ✅', drop(x.id));
     });
     document.querySelectorAll('[data-bwaste]').forEach(b => b.onclick = async () => {
       const x = find(b.dataset.bwaste); if (!x) return;
       const q = await askQty('🗑 Списать: ' + x.name, 'Сколько выкинули? Попадёт в отчёт о списаниях, партия уберётся из списка', '', x.unit, 'Списать');
-      if (q != null) act({ action: 'batchDone', data: { id: x.id, waste: true, q } }, 'Списано 🗑');
+      if (q != null) act({ action: 'batchDone', data: { id: x.id, waste: true, q } }, 'Списано 🗑', drop(x.id));
     });
     document.querySelectorAll('[data-balive]').forEach(b => b.onclick = async () => {
       const x = find(b.dataset.balive); if (!x) return;
       const tz = ts => new Date(ts + 5 * 36e5).toISOString().slice(0, 10), date = await askDate('👌 Ещё живая: ' + x.name, 'В боте партия от ' + esc(new Date(x.made).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })) + '. Посмотри на наклейку и выбери дату с неё. Для размороженной — дату разморозки', tz(Date.now()), 'Подтвердить');
       if (!date) return;
+      toast('Сохраняю…');
       try {
-        const r = await call('batchAlive', { id: x.id, date });
+        let r = await call('batchAlive', { id: x.id, date, _back: ['fridge', 'me'] });
         if (r && r.check) {
           const was = new Date(r.was).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }), now2 = new Date(date + 'T12:00:00+05:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
           const sure = await confirmBox(`На наклейке ${now2}, а в боте эта партия от ${was} — она старше. Перепроверь холодильник: нет ли там ещё ${x.name} от ${was}? Нажми «ОК», если старой нет: бот поправит дату, а старую партию посчитает закончившейся.`);
           if (!sure) { toast('Тогда отметь старую партию: «Ещё живая» с её датой, «Закончилась» или «Списать»'); return; }
-          await call('batchAlive', { id: x.id, date, sure: true });
+          r = await call('batchAlive', { id: x.id, date, sure: true, _back: ['fridge', 'me'] });
         }
-        fridgeData = null; haptic('success'); toast(date === tz(x.made) ? 'Ок, проверим завтра 👌' : 'Дату исправили по наклейке ✅'); me = await call('me'); render();
+        fridgeData = r._fridge || null; if (r._me) me = r._me; haptic('success'); toast(date === tz(x.made) ? 'Ок, проверим завтра 👌' : 'Дату исправили по наклейке ✅'); render();
       } catch (e) { toast(e.message); }
     });
     document.querySelectorAll('[data-bthaw]').forEach(b => b.onclick = async () => {

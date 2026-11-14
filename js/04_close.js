@@ -318,12 +318,16 @@ Object.assign(binds, {
     });
     upd();
     syncBtn();
-    const offDone = async (fn, msg) => { try { await fn(); fridgeData = null; haptic('success'); toast(msg); me = await call('me'); render(); } catch (e) { toast(e.message); } };
-    document.querySelectorAll('[data-offok]').forEach(b => b.onclick = () => offDone(() => call('autoOffOk', { id: b.dataset.offok }), 'Отмечено: вылили 🗑'));
+    // «вылили» — сразу на экране; «вернуть» — ждём бота, но одним запросом (свежие данные приходят в том же ответе)
+    const offDone = async (action, id, msg, drop) => {
+      toast(drop ? msg : 'Сохраняю…');
+      try { await quick(action, { id }, ['me', 'fridge'], drop ? () => { me.offAsk = (me.offAsk || []).filter(y => y.id !== id); } : null); haptic('success'); if (!drop) toast(msg); } catch (e) {}
+    };
+    document.querySelectorAll('[data-offok]').forEach(b => b.onclick = () => offDone('autoOffOk', b.dataset.offok, 'Отмечено: вылили 🗑', true));
     document.querySelectorAll('[data-offret]').forEach(b => b.onclick = async () => {
       const x = (me.offAsk || []).find(y => y.id === b.dataset.offret); if (!x) return;
       if (!(await confirmBox(`Вернуть ${x.name} (${fmt(x.q)} ${x.unit})? Партия вернётся в холодильник и уйдёт из отчёта списаний.`))) return;
-      offDone(() => call('batchReturn', { id: x.id }), 'Партия возвращена ↩️');
+      offDone('batchReturn', x.id, 'Партия возвращена ↩️');
     });
     btn.onclick = async () => {
       if ((me.offAsk || []).length) { toast('Сначала ответь про списанные ботом заготовки'); haptic('error'); const o = document.querySelector('[data-offok]'); if (o) o.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }

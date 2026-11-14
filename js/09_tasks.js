@@ -37,7 +37,7 @@ function openGuDone() {
     const ids = ph.filter(p => p.id).map(p => p.id);
     if (!ids.length && !(await confirmBox('Фото уже выложил(а) в группу?'))) return;
     btn.disabled = true; btn.textContent = 'Отправляю…';
-    try { await call('guDone', { mon: g.mon, photos: ids }); haptic('success'); toast('Спасибо! Генуборка отмечена ✅'); closeSheet(); me = await call('me'); render(); }
+    try { const r = await call('guDone', { mon: g.mon, photos: ids, _back: ['me'] }); haptic('success'); toast('Спасибо! Генуборка отмечена ✅'); closeSheet(); me = r._me || await call('me'); render(); }
     catch (e) { toast(e.message); btn.disabled = false; sync(); }
   };
 }
@@ -150,8 +150,8 @@ Object.assign(binds, {
       if (taskForm.mode === 'status' && !taskForm.statuses.length) return toast('Выбери статус');
       if (taskForm.mode === 'people' && !taskForm.ids.length) return toast('Выбери людей');
       add.disabled = true; add.textContent = 'Отправляю…';
-      try { const r = await call('taskAdd', { text, due, to: taskForm }); haptic('success'); toast('Задача отправлена ✅');
-        Object.keys(formKeep).filter(k => k[0] === 't').forEach(k => delete formKeep[k]); taskData = null; me = await call('me'); render(); }
+      try { const r = await call('taskAdd', { text, due, to: taskForm, _back: ['me'] }); haptic('success'); toast('Задача отправлена ✅');
+        Object.keys(formKeep).filter(k => k[0] === 't').forEach(k => delete formKeep[k]); taskData = null; me = r._me || await call('me'); render(); }
       catch (e) { toast(e.message); add.disabled = false; add.textContent = 'Поставить задачу'; }
     };
   },

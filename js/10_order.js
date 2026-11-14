@@ -69,7 +69,7 @@ Object.assign(binds, {
       chk.forEach(c => items[c.pid] = c.v);
       if (!Object.keys(items).length && !(await confirmBox('Заказ пустой. Отменить заказ на завтра?'))) return;
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { await call('order', { items }); orderDraft = {}; me = await call('me'); haptic('success'); toast(Object.keys(items).length ? 'Заказ сохранён ✅' : 'Заказ отменён'); render(); }
+      try { const r = await call('order', { items, _back: ['me'] }); orderDraft = {}; me = r._me || await call('me'); haptic('success'); toast(Object.keys(items).length ? 'Заказ сохранён ✅' : 'Заказ отменён'); render(); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Отправить заказ'; }
     };
   },

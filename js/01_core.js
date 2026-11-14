@@ -58,6 +58,30 @@ async function call(action, payload) {
   if (j.error) throw new Error(j.error);
   return j;
 }
+// Действие «сразу на экране»: apply() меняет данные на экране, не дожидаясь бота. Бот в том же ответе присылает свежие данные экрана
+// (back: ['me', 'fridge', 'home']) — второй запрос не нужен. Ошибка — экран возвращается как было, и показываем, что не так
+let pend = 0;
+function softRender() {   // перерисовать, только если человек сейчас ничего не вводит и не открыто окошко
+  const a = document.activeElement;
+  if (document.getElementById('sheet') || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+  render();
+}
+async function quick(action, payload, back, apply) {
+  const snap = { me: JSON.parse(JSON.stringify(me)), fridge: fridgeData ? JSON.parse(JSON.stringify(fridgeData)) : null };
+  if (apply) { apply(); render(); }
+  pend++;
+  let r;
+  try { r = await call(action, Object.assign({}, payload || {}, { _back: back || [] })); }
+  catch (e) { pend--; me = snap.me; fridgeData = snap.fridge; render(); haptic('error'); toast(e.message); throw e; }
+  pend--;
+  if (!pend) {   // пока идут другие действия — их ответ придёт позже и обновит экран
+    if (r._me) me = r._me;
+    if ((back || []).indexOf('fridge') >= 0) fridgeData = r._fridge || null;
+    if (r._home) homeData = r._home;
+    if (apply || r._me || r._fridge) softRender();
+  }
+  return r;
+}
 function applyTheme() {
   const dark = tg && tg.colorScheme === 'dark';
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';

@@ -131,9 +131,13 @@ let tkP = null, cfgP = null, namesP = null;
 async function getTk() { if (tkCards) return tkCards; tkP = tkP || call('tk').then(r => tkCards = r.cards).catch(e => { tkP = null; throw e; }); return tkP; }
 async function getCfg() { if (cfg) return cfg; cfgP = cfgP || call('config').then(r => cfg = r).catch(e => { cfgP = null; throw e; }); return cfgP; }
 async function getNames() { if (names) return names; namesP = namesP || call('names').then(r => names = r.names).catch(e => { namesP = null; throw e; }); return namesP; }
+// после первой вкладки — в фоне то, куда чаще всего переходят: техкарты, холодильник (и настройки админу)
 function prefetch() {
-  getTk().catch(() => {});
-  if (me.isAdmin) getCfg().catch(() => {});
+  setTimeout(() => {
+    getTk().catch(() => {});
+    if (!fridgeData && !(me.orderer && !me.isAdmin)) call('fridge').then(r => { if (!fridgeData) fridgeData = r; }).catch(() => {});
+    if (me.isAdmin) getCfg().catch(() => {});
+  }, 800);
 }
 
 const views = {

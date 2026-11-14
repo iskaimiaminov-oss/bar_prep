@@ -189,7 +189,7 @@ function askLate() {
     await fixBig([it, ft]);
     if (isNaN(ft.v) || ft.v < 0 || ft.v > it.v) { toast('В морозилку — не больше, чем сварено'); return; }
     const b = $('#lOk'); b.disabled = true; b.textContent = 'Вношу…';
-    try { const r = await call('madeLate', { pid: p.id, day, q: it.v, f: ft.v }); closeSheet(); fridgeData = null; haptic('success'); toast('Внесено за ' + day.slice(8, 10) + '.' + day.slice(5, 7) + ' ✅'); me = await call('me'); render(); askLabel(r && r.label); }
+    try { const r = await call('madeLate', { pid: p.id, day, q: it.v, f: ft.v, _back: ['me', 'fridge'] }); closeSheet(); fridgeData = r._fridge || null; haptic('success'); toast('Внесено за ' + day.slice(8, 10) + '.' + day.slice(5, 7) + ' ✅'); me = r._me || await call('me'); render(); askLabel(r && r.label); }
     catch (e) { toast(e.message); b.disabled = false; b.textContent = '✅ Внести'; }
   };
 }

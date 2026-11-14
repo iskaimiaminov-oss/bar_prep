@@ -28,7 +28,14 @@ async function refreshAll() {
   taskData = evData = homeData = hist = cfg = tkCards = null; cfgP = tkP = null;
   fridgeData = bkData = cardData = null;
   Object.keys(shiftCache).forEach(k => delete shiftCache[k]); Object.keys(shiftLoading).forEach(k => delete shiftLoading[k]);
-  me = await call('me'); render(); prefetch();
+  await boot(); render(); prefetch();
+}
+// вход: «me» и данные «Сегодня» одним запросом (раньше — два подряд, каждый ~2–3 секунды)
+async function boot() {
+  const m = await call('boot');
+  if (m._home) { homeData = m._home; homeP = Promise.resolve(homeData); homeAt = Date.now(); }
+  delete m._home;
+  me = m;
 }
 function initPull() {
   const ind = document.createElement('div'); ind.id = 'pull'; document.body.appendChild(ind);
@@ -63,7 +70,7 @@ function initPull() {
   try { tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch (e) {}
   if (!API) return fail('🔌', 'Нет адреса сервера', 'Открой приложение кнопкой в боте.');
   try {
-    me = await call('me');
+    await boot();
     const restored = me.canClose && loadDraft();
     const h = new Date().getHours();
     if (me.canClose && (h >= 20 || h < 3)) tab = 'count';
