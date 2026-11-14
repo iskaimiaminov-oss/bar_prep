@@ -12,7 +12,7 @@ function openGuDone() {
   closeSheet();
   const ph = [], MAX = 5;
   const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
-  const grid = () => ph.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${esc(p.src)}" alt=""><button class="x" data-gp="${k}">×</button></div>`).join('') +
+  const grid = () => ph.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${p.src}" alt=""><button class="x" data-gp="${k}">×</button></div>`).join('') +
     (ph.length < MAX ? `<label class="ph add" for="gpinput"><span><b>+</b>Фото</span></label>` : '');
   wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>🧹 Генуборка выполнена</h2>
     <p class="sub" style="margin-top:4px">Загрузи фото своей зоны (до ${MAX}) — их получат администраторы. Если уже выложил(а) фото в группу — просто нажми кнопку.</p>
@@ -48,7 +48,7 @@ function openTaskDone(t, done) {
   closeSheet();
   const ph = [];
   const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
-  const grid = () => ph.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${esc(p.src)}" alt=""><button class="x" data-tp="${k}">×</button></div>`).join('') +
+  const grid = () => ph.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${p.src}" alt=""><button class="x" data-tp="${k}">×</button></div>`).join('') +
     (ph.length < TASK_PH_MAX ? `<label class="ph add" for="tpinput"><span><b>+</b>Фото</span></label>` : '');
   wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>✅ Задача выполнена</h2>
     <p class="sub" style="margin-top:4px">${esc(t.text)}</p>

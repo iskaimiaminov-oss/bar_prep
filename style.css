@@ -1,5 +1,5 @@
-  @font-face{font-family:"Corbel Rassvet";src:url("corbel.woff") format("woff");font-weight:400;font-style:normal;font-display:swap}
-  @font-face{font-family:"Corbel Rassvet";src:url("corbelb.woff") format("woff");font-weight:600 700;font-style:normal;font-display:swap}
+  @font-face{font-family:"Corbel Rassvet";src:url("corbel.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
+  @font-face{font-family:"Corbel Rassvet";src:url("corbelb.ttf") format("truetype");font-weight:600 700;font-style:normal;font-display:swap}
   :root{
     --olive:#96A466; --olive-2:#A9B67C; --olive-soft:#E7ECCD;
     --forest:#0A3320; --forest-2:#164A30;

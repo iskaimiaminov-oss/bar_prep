@@ -6,7 +6,7 @@ function header() {
   // справа сверху: «?» — инструкция, кружок с буквой — профиль (у точек Яндекс/Узум их нет)
   const acts = me.orderer && !me.isAdmin ? '' : `<div class="hero-acts">
       <button class="hbtn" id="helpBtn" aria-label="Инструкция">?</button>
-      <button class="hbtn me ${tab === 'profile' ? 'on' : ''}" id="meBtn" aria-label="Профиль" style="${AVATARS[me.name] ? `background:url('${esc(AVATARS[me.name])}') center/cover;color:transparent` : ''}">${esc(String(me.name || '?')[0])}</button></div>`;
+      <button class="hbtn me ${tab === 'profile' ? 'on' : ''}" id="meBtn" aria-label="Профиль" style="${AVATARS[me.name] ? `background:url('${AVATARS[me.name]}') center/cover;color:transparent` : ''}">${esc(String(me.name || '?')[0])}</button></div>`;
   return `<div class="hero">${LOOP}${acts}
     <div class="brand"><img class="logo" src="${LOGO}" alt=""><div><h1>Рассвет</h1><p>Твоя любимая кофейня🫶</p></div></div>
     <div class="hello">Привет, ${esc(first)} 👋</div></div>`;

@@ -83,7 +83,7 @@ function loadDraft() {
 function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
 
 function photosGrid() {
-  return photos.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${esc(p.src)}" alt="" data-ph="${k}"><button class="x" data-phdel="${k}">×</button></div>`).join('') +
+  return photos.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${p.src}" alt="" data-ph="${k}"><button class="x" data-phdel="${k}">×</button></div>`).join('') +
     (photos.length < 10 ? `<label class="ph add" for="phinput"><span><b>+</b>Фото</span></label>` : '');
 }
 function bindPhotos() {
