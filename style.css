@@ -231,6 +231,11 @@
   .st4,.seg button.on.st4{background:#EADCF0;color:#5E3A72}
   .st5,.seg button.on.st5{background:#F3D9D2;color:#86372A}
   .seg{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .stpick{display:inline-block;margin-top:8px;border:1.5px solid var(--line);background:var(--card);color:inherit;border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer}
+  .fold{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;border:0;background:none;color:inherit;padding:0;text-align:left;cursor:pointer;font:inherit}
+  .fold h2{margin:0}
+  .foldar{flex:0 0 auto;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--olive-soft);color:var(--forest);font-size:15px}
+  .fold+.sub{margin-top:6px}
   .seg button{border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:6px 11px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted)}
   .seg button.on{border-color:transparent}
   .seg button.on.st0{background:#DCE6F0;color:#3B5872}

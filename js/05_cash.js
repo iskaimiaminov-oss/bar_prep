@@ -1,4 +1,5 @@
 // Файл «js/05_cash.js»: вкладка «Наличные»: касса, конверт, расходы
+const cashFold = {};   // «Наличные»: какие дни раскрыты (true/false); нет записи — сегодня открыт, остальные свёрнуты
 // ===== НАЛИЧНЫЕ =====
 // Суммы: «200 000», «200000 сум», «200к», «1,5 млн»
 const parseMoney = v => {
@@ -29,13 +30,15 @@ function cashHtml() {
       ''));
   }
   const lbl = ['Сегодня', 'Вчера', 'Позавчера'];
+  if (cashFold.today !== d.today) { Object.keys(cashFold).forEach(k => delete cashFold[k]); cashFold.today = d.today; }   // новый день — снова «сегодня открыт»
   d.days.forEach((day, i) => {
     const ops = d.ops.filter(o => o.date === day);
     if (!ops.length && i) return;
     const live = ops.filter(o => !o.canceled), sum = f => live.filter(f).reduce((a, o) => a + o.amount, 0);
     const kx = sum(o => o.kind === 'exp' && o.src === 'kassa'), ex = sum(o => o.kind === 'exp' && o.src === 'env'), inn = sum(o => o.kind === 'in');
-    out.push(card(`<h2>${lbl[i]} · ${dmy(day)}</h2>` + (ops.length
-      ? `<p class="sub">${[kx ? 'из кассы −' + money(kx) : '', ex ? 'из конверта −' + money(ex) : '', inn ? 'в конверт +' + money(inn) : ''].filter(Boolean).join(' · ') || 'всё отменено'}</p>` + ops.map(cashOpRow).join('')
+    const open = cashFold[day] != null ? cashFold[day] : i === 0;   // сегодня открыт, остальные дни — свёрнуты
+    out.push(card(`<button class="fold" data-cfold="${day}" data-open="${open ? 1 : 0}"><h2>${lbl[i]} · ${dmy(day)}</h2>${ops.length ? `<span class="foldar">${open ? '▴' : '▾'}</span>` : ''}</button>` + (ops.length
+      ? `<p class="sub">${[kx ? 'из кассы −' + money(kx) : '', ex ? 'из конверта −' + money(ex) : '', inn ? 'в конверт +' + money(inn) : ''].filter(Boolean).join(' · ') || 'всё отменено'}${open ? '' : ' · ' + ops.length + ' ' + (ops.length % 10 === 1 && ops.length % 100 !== 11 ? 'запись' : [2, 3, 4].indexOf(ops.length % 10) >= 0 && (ops.length % 100 < 12 || ops.length % 100 > 14) ? 'записи' : 'записей')}</p>` + (open ? ops.map(cashOpRow).join('') : '')
       : `<p class="sub">Записей пока нет</p>`)));
   });
   return out.join('');
@@ -108,6 +111,7 @@ Object.assign(binds, {
     const e = document.getElementById('cExp'), i = document.getElementById('cIn');
     if (e) e.onclick = () => openCashForm('exp');
     if (i) i.onclick = () => openCashForm('in');
+    document.querySelectorAll('[data-cfold]').forEach(b => b.onclick = () => { cashFold[b.dataset.cfold] = b.dataset.open !== '1'; cashD.fresh = true; render(); });   // раскрыть/свернуть — без запроса к боту
     document.querySelectorAll('[data-cedit]').forEach(b => b.onclick = () => { const o = cashD.ops.find(x => x.id === b.dataset.cedit); if (o) openCashForm(o.kind, o); });
   },
 });

@@ -8,6 +8,7 @@ function avaHtml(name, extraStyle) {   // фото сотрудника или �
   if (src) return `<img class="ava" src="${src}" style="object-fit:cover${st ? ';' + st : ''}">`;
   return `<div class="ava"${st ? ` style="${st}"` : ''}>${esc(String(name || '?')[0] || '?')}</div>`;
 }
+let stOpen = null;   // у кого сейчас раскрыт выбор статуса
 const stBadge = st => st ? `<span class="stb st${ST_LIST.indexOf(st)}">${ST_LABEL[st] || esc(st)}</span>` : '';
 const statusOf = name => (me.statuses || {})[name] || '';
 // Выбор адресатов: всем / по статусу / админам / выбрать людей
@@ -62,8 +63,8 @@ Object.assign(views, {
     const whoHtml = who ? `<h3>Заготовки 14:00–15:30</h3>${badges(who.prep)}<h3>Подсчёт в ${esc(who.countAt)}</h3>${badges(who.count)}` : '';
     const sts = cfg.statuses || {};
     const stNames = (cfg.schedule || []).filter(n => (cfg.off || []).indexOf(n) < 0).concat(cfg.extra || []);
-    const statusCard = card(`<h2>Статусы</h2><p class="sub">Нажми на статус — сохраняется сразу. Цвет видно на главном экране</p>` +
-      stNames.map(n => `<div class="strow"><b>${esc(n)}</b> ${stBadge(sts[n])}<label style="float:right;font-size:13px;color:var(--muted)">🎂 <input class="bdin" data-bd="${esc(n)}" placeholder="дд.мм" inputmode="numeric" maxlength="5" value="${(cfg.bdays || {})[n] ? cfg.bdays[n].slice(3) + '.' + cfg.bdays[n].slice(0, 2) : ''}"></label><div class="seg">${ST_LIST.map((st, k) => `<button data-stname="${esc(n)}" data-st="${st}" class="${sts[n] === st ? 'on st' + k : ''}">${ST_LABEL[st]}</button>`).join('')}</div></div>`).join(''));
+    const statusCard = card(`<h2>Статусы</h2><p class="sub">Нажми «Статус ▾» и выбери — сохраняется сразу. Цвет видно на главном экране</p>` +
+      stNames.map(n => `<div class="strow"><b>${esc(n)}</b> ${stBadge(sts[n])}<label style="float:right;font-size:13px;color:var(--muted)">🎂 <input class="bdin" data-bd="${esc(n)}" placeholder="дд.мм" inputmode="numeric" maxlength="5" value="${(cfg.bdays || {})[n] ? cfg.bdays[n].slice(3) + '.' + cfg.bdays[n].slice(0, 2) : ''}"></label><button class="stpick" data-stopen="${esc(n)}">${sts[n] ? 'Статус: ' + (ST_LABEL[sts[n]] || esc(sts[n])) : 'Выбрать статус'} ${stOpen === n ? '▴' : '▾'}</button>${stOpen === n ? `<div class="seg">${ST_LIST.map((st, k) => `<button data-stname="${esc(n)}" data-st="${st}" class="${sts[n] === st ? 'on st' + k : ''}">${ST_LABEL[st]}</button>`).join('')}</div>` : ''}</div>`).join(''));
     const usersCard = card(`<h2>Подключены к боту</h2><p class="sub">«🛡 Админ» — работает как обычный сотрудник (отмечает заготовки, закрывает смену по графику, берёт замены), плюс видит историю закрытий и фото, ставит задачи и создаёт события. Список заготовок и команду менять не может</p>${users}`);
     return card(`<h2>Команда бара</h2><p class="sub">Все из графика этого месяца попадают сюда сами. Новый человек в графике — появится тут, убрали из графика — пропадёт. Нажми на имя, чтобы выключить того, кто не работает в баре.</p><div class="chips">${chips}</div>
         <h3>Добавить вручную</h3><p class="sub">Если человека нет в графике</p>${extra}
@@ -115,9 +116,10 @@ Object.assign(binds, {
       const date = dg ? String(mm).padStart(2, '0') + '-' + String(dd).padStart(2, '0') : '';
       try { const r = await call('setBirthday', { name: inp.dataset.bd, date }); cfg.bdays = r.bdays; if (homeData) homeData.bdays = r.bdays; toast(date ? 'День рождения сохранён 🎂' : 'Удалено'); } catch (e) { toast(e.message); }
     });
+    document.querySelectorAll('[data-stopen]').forEach(b => b.onclick = () => { stOpen = stOpen === b.dataset.stopen ? null : b.dataset.stopen; render(); });
     document.querySelectorAll('[data-stname]').forEach(b => b.onclick = async () => {
       const name = b.dataset.stname, st = (cfg.statuses || {})[name] === b.dataset.st ? '' : b.dataset.st;
-      try { const r = await call('setStatus', { name, status: st }); cfg.statuses = r.statuses; me.statuses = r.statuses; try { tg.HapticFeedback.selectionChanged(); } catch (e) {} render(); } catch (e) { toast(e.message); }
+      try { const r = await call('setStatus', { name, status: st }); cfg.statuses = r.statuses; me.statuses = r.statuses; stOpen = null; try { tg.HapticFeedback.selectionChanged(); } catch (e) {} render(); } catch (e) { toast(e.message); }
     });
     document.querySelectorAll('[data-view]').forEach(b => b.onclick = async () => {
       const on = b.dataset.on === '1';

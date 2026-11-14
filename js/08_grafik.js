@@ -48,7 +48,7 @@ Object.assign(views, {
     if (!d.canEdit) out += `<p class="sub" style="margin:0 0 8px">👀 График — только просмотр: составляет и меняет админ</p>`;
     else out += `<button class="btn soft" id="grCfgBtn">⚙️ Настройки графика: режим потока, люди, смены</button>`;
     // админ: по дням — сколько выходных занято (из скольки можно) и кто взял
-    if (r) {
+    if (r && r.open) {   // сбор закрыт — кто какие выходные взял, админу уже не показываем
       const wdL = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'long', timeZone: 'UTC' });
       const dnL = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' });
       const rows = (d.days || []).map(x => { const n = (x.names || []).length, full = x.cap != null && n >= x.cap;
@@ -61,7 +61,7 @@ Object.assign(views, {
           <button class="btn" id="grNowBtn">${d.draft && d.draft.from === r.from && d.draft.status === 'done' ? '🔄 Пересоставить с новыми выходными' : '🧩 Составить график сейчас'}</button>
           <p class="sub" style="margin-top:12px">График уже готов (ботом или руками в таблице)? Можно закрыть сбор раньше — отмечать выходные больше не смогут</p>
           <button class="btn soft" id="grDoneBtn">✅ График готов, закрыть сбор</button>` : ''}`);
-    } else out += empty('🗓', 'Сбор выходных сейчас не идёт', 'Каждую пятницу в 12:00 бот сам открывает сбор на следующую неделю (до субботы 18:00). График составляет только по твоей кнопке');
+    } else if (!r) out += empty('🗓', 'Сбор выходных сейчас не идёт', 'Каждую пятницу в 12:00 бот сам открывает сбор на следующую неделю (до субботы 18:00). График составляет только по твоей кнопке');
     // админ: начать сбор на следующую неделю раньше пятницы
     const nx = d.next;
     if (nx && !nx.err && d.canEdit) out += card(`<h2>🚀 Сбор на ${dmS(nx.from)}–${dmS(nx.to)}</h2><p class="sub">${nx.ahead ? 'Заранее, на неделю вперёд' : 'Не ждать пятницы'}: бот сразу напишет команде, примет выходные до ${esc(nx.dlText)}, напомнит. График — по твоей кнопке. В пятницу второй сбор не откроется</p><button class="btn" id="grStartNext">🗓 Открыть сбор на ${dmS(nx.from)}–${dmS(nx.to)}</button>`);
