@@ -183,7 +183,7 @@ const GRC_SH = [['M', 'Утро'], ['E', 'Вечер'], ['Mid', 'Середин�
 const grcState = v => typeof v !== 'number' ? 'no' : v === 0 ? 'ok' : v < 10 ? 'less' : 'rare';
 const GRC_IC = { ok: '✅', less: '🟡', rare: '🟠', no: '⛔' };
 const GRC_NEXT = { ok: 5, less: 20, rare: null, no: 0 };
-const grcNeedRows = [['mWk', 'Утро, пн–чт'], ['mWe', 'Утро, пт–вс'], ['eWk', 'Вечер, пн–чт', 'плюс стажёр или середина'], ['eWe', 'Вечер, пт–вс'], ['mid', 'Середина 9:00–19:00, пн–пт', '0 — середину не ставить']];
+const grcNeedRows = [['mWk', 'Утро, пн–чт'], ['mWe', 'Утро, пт–вс'], ['eWk', 'Вечер, пн–чт', 'плюс стажёр или середина'], ['eWe', 'Вечер, пт–вс'], ['mid', 'Середина 9:00–19:00, пн–вс', '0 — середину не ставить']];
 const GRC_NMIN = { mid: 0 }, GRC_NMAX = { mid: 2 };
 const grcDm = s => s ? s.slice(8, 10) + '.' + s.slice(5, 7) : '';
 function grCfgView() {
@@ -193,7 +193,6 @@ function grCfgView() {
   const p = grCfgP;
   if (p) {   // карточка сотрудника
     const cells = [1, 2, 3, 4, 5, 6, 7].map(w => `<tr><th>${GRC_WD[w]}</th>${GRC_SH.map(([s]) => {
-      if (s === 'Mid' && w >= 6) return '<td class="grcx">—</td>';
       const st = grcState((p.grid[w] || {})[s]);
       return `<td><button class="grcell ${st}" data-grcc="${w}:${s}">${GRC_IC[st]}</button></td>`; }).join('')}</tr>`).join('');
     out += card(`<h2>👤 ${esc(p.name)}</h2>
