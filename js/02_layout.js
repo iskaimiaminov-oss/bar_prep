@@ -93,6 +93,19 @@ function initTabDrag(bar) {
   window.addEventListener('pointercancel', e => { if (tabSt && e.pointerId === tabSt.id) tabFinish(); });
   window.addEventListener('touchmove', e => { if (tabDragOn) e.preventDefault(); }, { passive: false });
 }
+// iOS (Телеграм): прилипшая полоса вкладок с прокруткой вбок иногда не рисуется, пока не коснёшься экрана —
+// после отрисовки и после смены размера окна (tg.expand) чуть «шевелим» её, чтобы браузер перерисовал
+function tabsRepaint() {
+  const b = app.querySelector('.tabs'); if (!b) return;
+  b.style.opacity = '0.99'; void b.offsetHeight;
+  requestAnimationFrame(() => { b.style.opacity = ''; });
+}
+if (!window.__tabsRp) {
+  window.__tabsRp = true;
+  try { tg.onEvent('viewportChanged', () => setTimeout(tabsRepaint, 30)); } catch (e) {}
+  window.addEventListener('resize', () => setTimeout(tabsRepaint, 30));
+  window.addEventListener('pageshow', () => setTimeout(tabsRepaint, 30));
+}
 render.seq = 0;
 async function render() {
   const tabs = tabsList().map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('');
@@ -111,7 +124,7 @@ async function render() {
   if (bar && on) {
     bar.scrollLeft = render.tabScroll || 0;
     const target = Math.max(0, on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2);
-    requestAnimationFrame(() => bar.scrollTo({ left: target, behavior: render.tabScroll == null ? 'auto' : 'smooth' }));
+    requestAnimationFrame(() => { bar.scrollTo({ left: target, behavior: render.tabScroll == null ? 'auto' : 'smooth' }); setTimeout(tabsRepaint, 60); setTimeout(tabsRepaint, 400); });
     render.tabScroll = target;
     bar.addEventListener('scroll', () => { render.tabScroll = bar.scrollLeft; }, { passive: true });
   }

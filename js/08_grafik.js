@@ -88,7 +88,7 @@ Object.assign(views, {
 Object.assign(binds, {
   grafik() {
     if (grCfgOn) return grCfgBind();
-    const cb = document.getElementById('grCfgBtn'); if (cb) cb.onclick = () => { grCfgOn = true; grCfgD = null; grCfgP = null; grCfgNeed = null; render.toTop = true; render(); window.scrollTo(0, 0); };
+    const cb = document.getElementById('grCfgBtn'); if (cb) cb.onclick = () => { grcY.grafik = window.scrollY; grCfgOn = true; grCfgD = null; grCfgP = null; grCfgNeed = null; render.toTop = true; render(); window.scrollTo(0, 0); };
     const act = async (btn, action, payload, ok) => {
       if (btn) btn.disabled = true;
       try { const r = await call(action, payload); grD = r; grSel = null; if (r.msg) toast(r.msg); else if (ok) toast(ok); haptic('success'); render(); return r; }
@@ -175,7 +175,9 @@ Object.assign(binds, {
 });
 
 // ===== «Настройки графика» (только админ): режим потока, сколько людей на смене, правила по сотрудникам =====
-let grCfgOn = false, grCfgD = null, grCfgP = null, grCfgNeed = null;   // grCfgP — правим сотрудника (копия), grCfgNeed — правим «сколько людей»
+let grCfgOn = false, grCfgD = null, grCfgP = null, grCfgNeed = null;
+const grcY = { grafik: 0, list: 0 };   // где был экран: график до входа в настройки, список сотрудников до входа в карточку
+const grcGo = y => { render.toTop = true; return render().then(() => window.scrollTo(0, y || 0)); };   // перерисовать и вернуть экран на место   // grCfgP — правим сотрудника (копия), grCfgNeed — правим «сколько людей»
 const GRC_LV = { S: 'Старший', P: 'Про', B: 'Бариста', T: 'Стажёр' };
 const GRC_WD = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const GRC_SH = [['M', 'Утро'], ['E', 'Вечер'], ['Mid', 'Середина']];
@@ -229,7 +231,7 @@ function grCfgBind() {
     catch (e) { toast(e.message); if (btn) btn.disabled = false; return false; }
   };
   const $ = id => document.getElementById(id);
-  const bk = $('grcBack'); if (bk) bk.onclick = () => { if (grCfgP) grCfgP = null; else { grCfgOn = false; grCfgNeed = null; } render.toTop = true; render(); };
+  const bk = $('grcBack'); if (bk) bk.onclick = () => { if (grCfgP) { grCfgP = null; grcGo(grcY.list); } else { grCfgOn = false; grCfgNeed = null; grcGo(grcY.grafik); } };
   document.querySelectorAll('[data-grcm]').forEach(b => b.onclick = async () => {
     const id = b.dataset.grcm; if (id === grCfgD.mode) return;
     const x = grCfgD.modes.find(y => y.id === id);
@@ -246,7 +248,7 @@ function grCfgBind() {
   const ns = $('grcNSave'); if (ns) ns.onclick = async () => { if (await save(ns, { need: Object.assign({ mode: grCfgD.mode }, grCfgNeed) }, 'Сохранил 👥')) { grCfgNeed = null; render(); } };
   const nn = $('grcNNo'); if (nn) nn.onclick = () => { grCfgNeed = null; render(); };
   const nd = $('grcNDef'); if (nd) nd.onclick = async () => { const m = grCfgD.modes.find(y => y.id === grCfgD.mode); if (await confirmBox('Вернуть числа как были?')) save(nd, { need: Object.assign({ mode: m.id }, m.def) }, 'Вернул как было'); };
-  document.querySelectorAll('[data-grcp]').forEach(r => r.onclick = () => { grCfgP = JSON.parse(JSON.stringify(grCfgD.ppl[Number(r.dataset.grcp)])); render.toTop = true; render(); window.scrollTo(0, 0); });
+  document.querySelectorAll('[data-grcp]').forEach(r => r.onclick = () => { grcY.list = window.scrollY; grCfgP = JSON.parse(JSON.stringify(grCfgD.ppl[Number(r.dataset.grcp)])); render.toTop = true; render(); window.scrollTo(0, 0); });
   const p = grCfgP; if (!p) return;
   const keep = () => { const f = $('grcFrom'); if (f) p.from = f.value; [['grcFull', 'full'], ['grcWeE', 'weE'], ['grcSkip', 'skip']].forEach(([id, k]) => { const el = $(id); if (el) p[k] = el.checked; }); };
   document.querySelectorAll('[data-grclv]').forEach(b => b.onclick = () => { keep(); p.level = b.dataset.grclv; render(); });
@@ -258,10 +260,10 @@ function grCfgBind() {
   });
   const fx = $('grcFromX'); if (fx) fx.onclick = () => { keep(); p.from = ''; render(); };
   const bl = $('grcByLv'); if (bl) bl.onclick = () => { keep(); if (!grCfgD.lv[p.level]) return toast('Сначала выбери уровень'); p.grid = JSON.parse(JSON.stringify(grCfgD.lv[p.level])); render(); };
-  const pn = $('grcPNo'); if (pn) pn.onclick = () => { grCfgP = null; render(); };
+  const pn = $('grcPNo'); if (pn) pn.onclick = () => { grCfgP = null; grcGo(grcY.list); };
   const ps = $('grcPSave'); if (ps) ps.onclick = async () => {
     keep(); if (!p.level) return toast('Выбери уровень');
-    if (await save(ps, { person: { name: p.name, key: p.key, level: p.level, from: p.from, skip: p.skip, full: p.full, weE: p.weE, grid: p.grid } }, 'Сохранил — учту при следующем «Составить» ✅')) { grCfgP = null; render(); }
+    if (await save(ps, { person: { name: p.name, key: p.key, level: p.level, from: p.from, skip: p.skip, full: p.full, weE: p.weE, grid: p.grid } }, 'Сохранил — учту при следующем «Составить» ✅')) { grCfgP = null; grcGo(grcY.list); }
   };
-  const pr = $('grcPReset'); if (pr) pr.onclick = async () => { if (await confirmBox('Вернуть правила «' + p.name + '» как были? Уровень останется')) { if (await save(pr, { reset: p.name }, 'Вернул как было')) { grCfgP = null; render(); } } };
+  const pr = $('grcPReset'); if (pr) pr.onclick = async () => { if (await confirmBox('Вернуть правила «' + p.name + '» как были? Уровень останется')) { if (await save(pr, { reset: p.name }, 'Вернул как было')) { grCfgP = null; grcGo(grcY.list); } } };
 }
