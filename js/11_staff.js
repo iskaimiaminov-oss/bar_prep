@@ -62,16 +62,23 @@ Object.assign(views, {
     const badges = list => list && list.length ? list.map(n => `<span class="badge">${esc(n)}</span>`).join('') : '<span class="sub">никого</span>';
     const whoHtml = who ? `<h3>Заготовки 14:00–15:30</h3>${badges(who.prep)}<h3>Подсчёт в ${esc(who.countAt)}</h3>${badges(who.count)}` : '';
     const sts = cfg.statuses || {};
-    const stNames = (cfg.schedule || []).filter(n => (cfg.off || []).indexOf(n) < 0).concat(cfg.extra || []);
-    const statusCard = card(`<h2>Статусы</h2><p class="sub">Нажми «Статус ▾» и выбери — сохраняется сразу. Цвет видно на главном экране</p>` +
-      stNames.map(n => `<div class="strow"><b>${esc(n)}</b> ${stBadge(sts[n])}<label style="float:right;font-size:13px;color:var(--muted)">🎂 <input class="bdin" data-bd="${esc(n)}" placeholder="дд.мм" inputmode="numeric" maxlength="5" value="${(cfg.bdays || {})[n] ? cfg.bdays[n].slice(3) + '.' + cfg.bdays[n].slice(0, 2) : ''}"></label><button class="stpick" data-stopen="${esc(n)}">${sts[n] ? 'Статус: ' + (ST_LABEL[sts[n]] || esc(sts[n])) : 'Выбрать статус'} ${stOpen === n ? '▴' : '▾'}</button>${stOpen === n ? `<div class="seg">${ST_LIST.map((st, k) => `<button data-stname="${esc(n)}" data-st="${st}" class="${sts[n] === st ? 'on st' + k : ''}">${ST_LABEL[st]}</button>`).join('')}</div>` : ''}</div>`).join(''));
+    const nk = n => String(n).toLowerCase().trim(), userOf = n => (cfg.users || []).find(u => nk(u.name) === nk(n));
+    const stNames0 = (cfg.schedule || []).filter(n => (cfg.off || []).indexOf(n) < 0).concat(cfg.extra || []);
+    const stNames = stNames0.concat((cfg.users || []).map(u => u.name).filter(n => !stNames0.some(x => nk(x) === nk(n))));
+    // 🛡 админ и «отключить от бота» — в строке сотрудника, под статусами (с @131 вместо отдельной карточки)
+    const admRow = n => { const u = userOf(n); if (!u) return '<p class="sub" style="margin:6px 0 0">Не подключён к боту — админом сделать нельзя</p>';
+      const v = (cfg.viewers || []).indexOf(u.id) >= 0;
+      return `<div class="stadm"><button class="tkbtn ${v ? 'on' : ''}" data-view="${esc(u.id)}" data-on="${v ? 0 : 1}">🛡 ${v ? 'Админ — убрать' : 'Сделать админом'}</button><button class="tkbtn soft" data-rm="${esc(u.id)}">Отключить от бота</button></div>`; };
+    const admMark = n => { const u = userOf(n); return u && (cfg.viewers || []).indexOf(u.id) >= 0 ? ' <span class="stadmb">🛡 админ</span>' : ''; };
+    const statusCard = card(`<h2>Статусы</h2><p class="sub">Нажми «Статус ▾» и выбери — сохраняется сразу. Цвет видно на главном экране. Там же — «🛡 Сделать админом»: видит историю закрытий и фото, ставит задачи и создаёт события; заготовки и команду менять не может</p>` +
+      stNames.map(n => `<div class="strow"><b>${esc(n)}</b> ${stBadge(sts[n])}${admMark(n)}<label style="float:right;font-size:13px;color:var(--muted)">🎂 <input class="bdin" data-bd="${esc(n)}" placeholder="дд.мм" inputmode="numeric" maxlength="5" value="${(cfg.bdays || {})[n] ? cfg.bdays[n].slice(3) + '.' + cfg.bdays[n].slice(0, 2) : ''}"></label><button class="stpick" data-stopen="${esc(n)}">${sts[n] ? 'Статус: ' + (ST_LABEL[sts[n]] || esc(sts[n])) : 'Выбрать статус'} ${stOpen === n ? '▴' : '▾'}</button>${stOpen === n ? `<div class="seg">${ST_LIST.map((st, k) => `<button data-stname="${esc(n)}" data-st="${st}" class="${sts[n] === st ? 'on st' + k : ''}">${ST_LABEL[st]}</button>`).join('')}</div>${admRow(n)}` : ''}</div>`).join(''));
     const usersCard = card(`<h2>Подключены к боту</h2><p class="sub">«🛡 Админ» — работает как обычный сотрудник (отмечает заготовки, закрывает смену по графику, берёт замены), плюс видит историю закрытий и фото, ставит задачи и создаёт события. Список заготовок и команду менять не может</p>${users}`);
     return card(`<h2>Команда бара</h2><p class="sub">Все из графика этого месяца попадают сюда сами. Новый человек в графике — появится тут, убрали из графика — пропадёт. Нажми на имя, чтобы выключить того, кто не работает в баре.</p><div class="chips">${chips}</div>
         <h3>Добавить вручную</h3><p class="sub">Если человека нет в графике</p>${extra}
         <div class="cl-row" style="margin-top:8px"><input id="newName" placeholder="Имя" style="min-width:0;flex:1;border:1.5px solid transparent;background:var(--cream);border-radius:10px;padding:10px 12px;outline:none"><button class="tkbtn" id="addName" style="padding:10px 14px;flex:0 0 auto">Добавить</button></div>
         <h3>Статусы «не в баре»</h3><textarea id="exclude" rows="3">${esc(cfg.exclude.join(', '))}</textarea>
         <button class="btn" id="saveStaff">Сохранить</button>`) +
-      statusCard + usersCard +
+      statusCard +
       card(`<h2>Проверка графика</h2><p class="sub">Кого бот отметит сегодня. Поменял график — нажми «Обновить график» на вкладке «Сегодня»</p>${whoHtml}<button class="btn soft" id="who">Проверить сегодня</button>`);
   },
 
