@@ -169,7 +169,7 @@ function openHelp() {
   // видео-обучение: список серий, по нажатию бот присылает видео в личку
   call('train').then(r => {
     const box = wrap.querySelector('#trainList'); if (!box) return;
-    box.innerHTML = (r.eps || []).map(e => `<button class="chip" data-tn="${e.n}" ${e.ready ? '' : 'disabled style="opacity:.5"'}>▶ ${e.n}. ${esc(e.t)}</button>`).join('') || '<span class="sub">Видео пока нет</span>';
+    box.innerHTML = (r.eps || []).map(e => `<button class="chip" data-tn="${esc(e.n)}" ${e.ready ? '' : 'disabled style="opacity:.5"'}>▶ ${esc(e.n)}. ${esc(e.t)}</button>`).join('') || '<span class="sub">Видео пока нет</span>';
     box.querySelectorAll('[data-tn]').forEach(b => b.onclick = async () => {
       b.disabled = true;
       try { await call('trainSend', { n: Number(b.dataset.tn) }); haptic('success'); toast('Видео отправлено в чат с ботом 🎬'); } catch (er) { toast(er.message); }
