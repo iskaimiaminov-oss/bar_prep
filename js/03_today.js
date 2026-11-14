@@ -138,7 +138,7 @@ function openDish() {
 function openProblem(done) {
   closeSheet(); probPhotos = [];
   const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
-  const grid = () => probPhotos.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${p.src}" alt=""><button class="x" data-pp="${k}">×</button></div>`).join('') +
+  const grid = () => probPhotos.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${esc(p.src)}" alt=""><button class="x" data-pp="${k}">×</button></div>`).join('') +
     (probPhotos.length < 3 ? `<label class="ph add" for="ppinput"><span><b>+</b>Фото</span></label>` : '');
   wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>⚠️ Сообщить о проблеме</h2>
     <p class="sub" style="margin-top:4px">Что сломалось, закончилось или мешает работе. Админ получит сразу</p>

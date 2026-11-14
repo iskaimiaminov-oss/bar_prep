@@ -1,6 +1,7 @@
 // Файл «js/01_core.js»: общее: Телеграм, адрес бота, вызовы call/post, toast, окошки, перевод единиц, глобальные переменные
 const tg = window.Telegram && window.Telegram.WebApp;
-const API = new URLSearchParams(location.search).get('api');
+// Адрес сервера приходит в ссылке от бота. Принимаем только https — иначе данные входа не отправляем
+const API = (() => { try { const u = new URL(new URLSearchParams(location.search).get('api') || ''); return u.protocol === 'https:' && !u.username && !u.password ? u.href : null; } catch (e) { return null; } })();
 const app = document.getElementById('app');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = x => String(Math.round(Number(x) * 100) / 100).replace('.', ',');
@@ -110,7 +111,7 @@ function compress(file) {
 }
 function lightbox(src) {
   const el = document.createElement('div'); el.className = 'lightbox';
-  el.innerHTML = `<img src="${src}" alt="">`; el.onclick = () => el.remove();
+  el.innerHTML = `<img src="${esc(src)}" alt="">`; el.onclick = () => el.remove();
   document.body.appendChild(el);
 }
 function toast(msg) {

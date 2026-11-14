@@ -5,7 +5,7 @@ const ST_LABEL = { 'стажер': 'Стажёр', 'бариста': 'Барис
 function avaHtml(name, extraStyle) {   // фото сотрудника или кружок с буквой, если фото нет
   const src = AVATARS[name];
   const st = extraStyle || '';
-  if (src) return `<img class="ava" src="${src}" style="object-fit:cover${st ? ';' + st : ''}">`;
+  if (src) return `<img class="ava" src="${esc(src)}" style="object-fit:cover${st ? ';' + st : ''}">`;
   return `<div class="ava"${st ? ` style="${st}"` : ''}>${esc(String(name || '?')[0] || '?')}</div>`;
 }
 const stBadge = st => st ? `<span class="stb st${ST_LIST.indexOf(st)}">${ST_LABEL[st] || esc(st)}</span>` : '';
