@@ -202,7 +202,7 @@ function tkShelf(cards, tk) { const c = (cards || []).find(x => x.id === tk), m 
 function lowDef(unit) { const u = String(unit || '').trim().replace(/\.$/, ''); return /^(л|l|литр\S*|кг|kg|килограмм\S*)$/i.test(u) ? '0,15' : /^(мл|ml|г|гр|g|грамм\S*)$/i.test(u) ? '150' : '0'; }
 function needRow(i) {
   return `<div class="need"><div class="dot">${esc(String(i.name).trim()[0] || '•').toUpperCase()}</div>
-    <div class="pname"><b>${esc(i.name)}</b><span>осталось ${i.left > 0 ? fmt(i.left) + ' ' + esc(i.unit) + ' — почти пусто' : fmt(i.have) + ' ' + esc(i.unit)} · норма ${fmt(i.norm)}${i.res ? ' с запасом' : ''}${i.frozen > 0 ? ' · ❄️ в морозилке ' + fmt(i.frozen) : ''}</span></div>
+    <div class="pname"><b>${esc(i.name)}</b><span>${i.frz ? '❄️ в морозилке ' + fmt(i.frozen) + ' ' + esc(i.unit) + ' · держим минимум ' + fmt(i.norm) : `осталось ${i.left > 0 ? fmt(i.left) + ' ' + esc(i.unit) + ' — почти пусто' : fmt(i.have) + ' ' + esc(i.unit)} · норма ${fmt(i.norm)}${i.res ? ' с запасом' : ''}`}</span></div>
     <div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div></div>`;
 }
 
@@ -253,6 +253,7 @@ Object.assign(views, {
           <label>${p.frz ? 'Хранится после разморозки, дней' : 'Срок хранения, дней'}<input data-f="shelf" inputmode="numeric" value="${esc(p.shelf || '')}" placeholder="${esc(tkShelf(cards, p.tk) || '—')}"></label>
           ${p.frz ? `<label>В морозилке, дней<input data-f="frzDays" inputmode="numeric" value="${esc(p.frzDays || '')}" placeholder="30"></label>` : '<span></span>'}
         </div>
+        ${p.frz ? `<div class="grid3" style="grid-template-columns:1fr"><label>Держать в морозилке минимум (${esc(p.unit || 'ед.')}) — меньше, и бот пишет «сварить»<input data-f="frzMin" inputmode="decimal" value="${esc(p.frzMin ? String(p.frzMin).replace('.', ',') : '')}" placeholder="${/^(мл|ml|г|гр|g)/i.test(p.unit || '') ? '1000' : '1'}"></label></div>` : ''}
         <div class="grid3" style="grid-template-columns:1fr">
           <label>Почти пусто, если меньше (${esc(p.unit || 'ед.')}) — тогда бот пишет «варить» как с нуля<input data-f="low" inputmode="decimal" value="${esc(p.low != null ? String(p.low).replace('.', ',') : '')}" placeholder="${esc(lowDef(p.unit))}"></label>
         </div>

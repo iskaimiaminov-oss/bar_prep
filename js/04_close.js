@@ -16,6 +16,15 @@ function closeSum(rows) {
   for (const r of rs) { const v = toNum(r.q); if (v === '' || isNaN(v) || v < 0) return ''; t += v; }
   return fmt(t);
 }
+// морозилка (с @131): строки «сколько + дата с наклейки», как холодильник; черновик fr:, старый черновик f: — одной строкой
+function frzRows(p) {
+  const dr = draft['fr:' + p.id];
+  if (Array.isArray(dr) && dr.length) return dr;
+  if (draft['f:' + p.id] != null && draft['f:' + p.id] !== '') return [{ q: draft['f:' + p.id], d: '' }];
+  const out = [], seen = {};
+  ((me.cbf || {})[p.id] || []).forEach(x => { if (x.day && !seen[x.day]) { seen[x.day] = 1; out.push({ q: '', d: x.day }); } });
+  return out.length ? out : [{ q: '', d: '' }];
+}
 function closeRowsHtml(p) {
   const rows = closeRows(p), many = rows.length > 1, td = tashDay();
   return `<div class="bcap">Сколько осталось · дата на наклейке</div>` + rows.map((r, k) => `<div class="brow" data-ri="${k}">
@@ -24,7 +33,12 @@ function closeRowsHtml(p) {
       ${many ? `<button class="bbtn del" data-rdel="${esc(p.id)}" aria-label="Убрать строку">×</button>` : ''}
       ${k === rows.length - 1 ? `<button class="bbtn" data-radd="${esc(p.id)}" aria-label="Ещё дата">+</button>` : ''}
     </div>`).join('') +
-    (p.frz ? `<div class="brow"><span class="frzl">❄️ В морозилке</span><label class="field"><input inputmode="decimal" enterkeyhint="next" data-fq="${esc(p.id)}" value="${esc(draft['f:' + p.id] != null ? draft['f:' + p.id] : '')}" placeholder="0"><small>${esc(p.unit)}</small></label></div>` : '');
+    (p.frz ? (() => { const fr = frzRows(p), fm = fr.length > 1; return `<div class="bcap" style="margin-top:10px">❄️ В морозилке · дата на наклейке</div>` + fr.map((r, k) => `<div class="brow" data-fi="${k}">
+      <label class="field"><input inputmode="decimal" enterkeyhint="next" data-fq="${esc(p.id)}" value="${esc(r.q)}" placeholder="0"><small>${esc(p.unit)}</small></label>
+      <input type="date" class="bdate" data-fd="${esc(p.id)}" value="${esc(r.d || '')}" max="${td}">
+      ${fm ? `<button class="bbtn del" data-fdel="${esc(p.id)}" aria-label="Убрать строку">×</button>` : ''}
+      ${k === fr.length - 1 ? `<button class="bbtn" data-fadd="${esc(p.id)}" aria-label="Ещё дата">+</button>` : ''}
+    </div>`).join(''); })() : '');
 }
 
 const photoCache = {};
@@ -198,6 +212,7 @@ Object.assign(binds, {
     // строки «остаток + дата»: сумма по холодильнику — в поле заготовки; плюсик — ещё строка, × — убрать
     const boxOf = pid => document.querySelector(`.bsub[data-rp="${CSS.escape(pid)}"]`);
     const readRows = pid => [...boxOf(pid).querySelectorAll('.brow[data-ri]')].map(r => ({ q: r.querySelector('[data-rq]').value, d: r.querySelector('[data-rd]').value }));
+    const readFRows = pid => [...boxOf(pid).querySelectorAll('.brow[data-fi]')].map(r => ({ q: r.querySelector('[data-fq]').value, d: r.querySelector('[data-fd]').value }));
     const syncSum = pid => { const m = inputs.find(i => i.dataset.id === pid); if (m) { m.value = closeSum(readRows(pid)); m.dispatchEvent(new Event('input')); } };
     const redraw = (pid, rows, focusK) => {
       draft['r:' + pid] = rows; saveDraft();
@@ -209,15 +224,23 @@ Object.assign(binds, {
       const pid = box.dataset.rp;
       box.addEventListener('input', e => {
         const t = e.target;
-        if (t.dataset.fq != null) { draft['f:' + pid] = t.value; t.parentNode.classList.remove('bad'); saveDraft(); syncBtn(); return; }
+        if (t.dataset.fq != null || t.dataset.fd != null) { (t.dataset.fd != null ? t : t.parentNode).classList.remove('bad'); draft['fr:' + pid] = readFRows(pid); delete draft['f:' + pid]; saveDraft(); syncBtn(); return; }
         if (t.dataset.rq == null && t.dataset.rd == null) return;
         (t.dataset.rd != null ? t : t.parentNode).classList.remove('bad');
         draft['r:' + pid] = readRows(pid); saveDraft(); syncSum(pid);
       });
-      box.addEventListener('change', e => { if (e.target.dataset.rd != null) { e.target.classList.remove('bad'); draft['r:' + pid] = readRows(pid); saveDraft(); syncSum(pid); } });
+      box.addEventListener('change', e => { if (e.target.dataset.fd != null) { e.target.classList.remove('bad'); draft['fr:' + pid] = readFRows(pid); delete draft['f:' + pid]; saveDraft(); return; } if (e.target.dataset.rd != null) { e.target.classList.remove('bad'); draft['r:' + pid] = readRows(pid); saveDraft(); syncSum(pid); } });
       box.addEventListener('click', e => {
         const b = e.target.closest('button'); if (!b) return;
         const rows = readRows(pid);
+        if (b.dataset.fadd != null || b.dataset.fdel != null) {
+          const fr = readFRows(pid); draft['r:' + pid] = rows;
+          if (b.dataset.fadd != null) fr.push({ q: '', d: '' }); else fr.splice(+b.closest('.brow').dataset.fi, 1);
+          draft['fr:' + pid] = fr.length ? fr : [{ q: '', d: '' }]; delete draft['f:' + pid]; saveDraft();
+          const p = me.preps.find(x => x.id === pid); box.innerHTML = closeRowsHtml(p); syncSum(pid); syncBtn();
+          if (b.dataset.fadd != null) { const f = [...box.querySelectorAll('[data-fq]')].pop(); if (f) f.focus(); }
+          return;
+        }
         if (b.dataset.radd != null) { rows.push({ q: '', d: '' }); redraw(pid, rows, rows.length - 1); try { tg.HapticFeedback.selectionChanged(); } catch (e) {} }
         else if (b.dataset.rdel != null) { rows.splice(+b.closest('.brow').dataset.ri, 1); redraw(pid, rows.length ? rows : [{ q: '', d: '' }]); }
       });
@@ -338,7 +361,7 @@ Object.assign(binds, {
       const badQ = qIn.filter(x => { const v = toNum(x.value); return v !== '' && (isNaN(v) || v < 0); });
       if (badQ.length) { badQ.forEach(x => x.parentNode.classList.add('bad')); badQ[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); toast('Проверь числа — есть ошибка'); haptic('error'); return; }
       // остаток больше нуля — нужна дата с наклейки, и не из будущего
-      const td = tashDay(), badD = [...document.querySelectorAll('.brow[data-ri]')].map(r => r.querySelector('[data-rd]')).filter(d => { const q = toNum(d.closest('.brow').querySelector('[data-rq]').value); return (q !== '' && q > 0 && !d.value) || (d.value && d.value > td); });
+      const td = tashDay(), badD = [...document.querySelectorAll('.brow[data-ri]')].map(r => r.querySelector('[data-rd]')).concat([...document.querySelectorAll('.brow[data-fi]')].map(r => r.querySelector('[data-fd]'))).filter(d => { const q = toNum(d.closest('.brow').querySelector('[data-rq], [data-fq]').value); return (q !== '' && q > 0 && !d.value) || (d.value && d.value > td); });
       if (badD.length) { badD.forEach(d => d.classList.add('bad')); badD[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); toast(badD[0].value ? 'Дата на наклейке не может быть из будущего' : 'Укажи дату с наклейки у каждого остатка'); haptic('error'); return; }
       const values = {}, rq = {}, fq = {};
       me.preps.forEach(p => {
@@ -347,7 +370,11 @@ Object.assign(binds, {
         if (s === '') return;
         values[p.id] = toNum(s); rq[p.id] = rs.map(r => ({ q: toNum(r.q), d: r.d }));
       });
-      document.querySelectorAll('input[data-fq]').forEach(i => { const v = toNum(i.value); if (v !== '') fq[i.dataset.fq] = v; });
+      me.preps.forEach(p => {   // морозилка по датам: [{ q, d }]
+        if (!p.frz || !boxOf(p.id)) return;
+        const fs = readFRows(p.id).filter(r => String(r.q).trim() !== '' || r.d);
+        if (fs.length && closeSum(fs) !== '') fq[p.id] = fs.map(r => ({ q: toNum(r.q), d: r.d }));
+      });
       const cash = { ik: cashVal('ik'), cf: cashVal('cf'), env: cashVal('env') };
       if (photos.some(p => p.loading)) { toast('Подожди, фото ещё загружаются…'); return; }
       const m = missing();
