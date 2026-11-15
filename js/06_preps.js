@@ -198,8 +198,6 @@ function askLate() {
 // Срок хранения из техкарты в днях («7 суток» → 7) — подсказка в редакторе заготовок
 function tkShelf(cards, tk) { const c = (cards || []).find(x => x.id === tk), m = c && String(c.shelf || '').match(/(\d+)\s*(сут|дн|день|дней)/i); return m ? m[1] : ''; }
 
-// подсказка в поле «Почти пусто»: общее правило — 0,15 л/кг, 150 мл/г, штуки — 0
-function lowDef(unit) { const u = String(unit || '').trim().replace(/\.$/, ''); return /^(л|l|литр\S*|кг|kg|килограмм\S*)$/i.test(u) ? '0,15' : /^(мл|ml|г|гр|g|грамм\S*)$/i.test(u) ? '150' : '0'; }
 function needRow(i) {
   return `<div class="need"><div class="dot">${esc(String(i.name).trim()[0] || '•').toUpperCase()}</div>
     <div class="pname"><b>${esc(i.name)}</b><span>${i.frz ? '❄️ в морозилке ' + fmt(i.frozen) + ' ' + esc(i.unit) + ' · держим минимум ' + fmt(i.norm) : `осталось ${i.left > 0 ? fmt(i.left) + ' ' + esc(i.unit) + ' — почти пусто' : fmt(i.have) + ' ' + esc(i.unit)} · норма ${fmt(i.norm)}${i.res ? ' с запасом' : ''}`}</span></div>
@@ -254,13 +252,11 @@ Object.assign(views, {
           ${p.frz ? `<label>В морозилке, дней<input data-f="frzDays" inputmode="numeric" value="${esc(p.frzDays || '')}" placeholder="30"></label>` : '<span></span>'}
         </div>
         ${p.frz ? `<div class="grid3" style="grid-template-columns:1fr"><label>Держать в морозилке минимум (${esc(p.unit || 'ед.')}) — меньше, и бот пишет «сварить»<input data-f="frzMin" inputmode="decimal" value="${esc(p.frzMin ? String(p.frzMin).replace('.', ',') : '')}" placeholder="${/^(мл|ml|г|гр|g)/i.test(p.unit || '') ? '1000' : '1'}"></label></div>` : ''}
-        <div class="grid3" style="grid-template-columns:1fr">
-          <label>Почти пусто, если меньше (${esc(p.unit || 'ед.')}) — тогда бот пишет «варить» как с нуля<input data-f="low" inputmode="decimal" value="${esc(p.low != null ? String(p.low).replace('.', ',') : '')}" placeholder="${esc(lowDef(p.unit))}"></label>
-        </div>
         <label class="switch"><input type="checkbox" data-f="frz" ${p.frz ? 'checked' : ''}> ❄️ Замораживаем (часть кладут в морозилку)</label>
       </div>`).join('');
     const cl = cfg.checklist || [];
-    return card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. «Норма по дням» — своя норма на загруженные или тихие дни; цифры подсказывает бот в понедельник. Техкарта — рецепт из таблицы, выход для пересчёта берётся из строки «Выход» в техкарте. Срок хранения — для напоминаний в «Холодильнике»; пусто — берётся из техкарты (серая цифра).</p>
+    const lowSw = card(`<label class="switch" style="margin:0"><input type="checkbox" id="lowOn" ${cfg.lowOn !== false ? 'checked' : ''}> Почти пусто — меньше 0,15 кг/л (150 г/мл): считать как пусто, варить с нуля и в 14:20 убрать остатки</label>`);
+    return lowSw + card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. «Норма по дням» — своя норма на загруженные или тихие дни; цифры подсказывает бот в понедельник. Техкарта — рецепт из таблицы, выход для пересчёта берётся из строки «Выход» в техкарте. Срок хранения — для напоминаний в «Холодильнике»; пусто — берётся из техкарты (серая цифра).</p>
       ${rows || ''}<button class="btn soft" id="add">+ Добавить заготовку</button>`) +
       card(`<h2>Чек-лист закрытия</h2><p class="sub">Пункты, которые отмечают на закрытии смены</p><div id="cl">` +
         cl.map((t, k) => `<div class="cl-row edit" style="padding:8px;margin-bottom:8px"><input data-cl value="${esc(t)}" placeholder="Например: почистить кофемашину"><button class="x" data-cldel="${k}">×</button></div>`).join('') +
@@ -294,6 +290,8 @@ Object.assign(binds, {
       try { const r = await call('saveChecklist', { items: cfg.checklist }); cfg.checklist = r.checklist; me = await call('me'); toast('Чек-лист сохранён ✅'); haptic('success'); render(); }
       catch (err) { toast(err.message); e.target.disabled = false; }
     };
+    const lo = document.getElementById('lowOn');
+    if (lo) lo.onchange = async () => { const on = lo.checked; lo.disabled = true; try { const r = await call('setLowOn', { on }); cfg.lowOn = r.lowOn; toast(r.lowOn ? '«Почти пусто» включено ✅' : '«Почти пусто» выключено'); haptic('success'); } catch (e) { toast(e.message); lo.checked = !on; } lo.disabled = false; };
     document.getElementById('save').onclick = async e => {
       collect(); e.target.disabled = true;
       try { const r = await call('savePreps', { preps: cfg.preps }); cfg.preps = r.preps; me = await call('me'); toast('Сохранено ✅'); haptic('success'); render(); }
