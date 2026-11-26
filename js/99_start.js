@@ -71,12 +71,13 @@ function initPull() {
   if (!API) return fail('🔌', 'Нет адреса сервера', 'Открой приложение кнопкой в боте.');
   try {
     await boot();
-    const restored = me.canClose && loadDraft();
+    let restored = me.canClose && loadDraft();
     const h = new Date().getHours();
     if (me.canClose && (h >= 20 || h < 3)) tab = 'count';
     if (me.orderer && !me.isAdmin) tab = 'order';
     if (restored) tab = 'count';
-    if (restored && me.closed) countReopen = true;   // начатая правка после закрытия — сразу в форму
+    if (restored && me.closed && draftNoDates()) { draft = {}; checks.clear(); photos = []; clearDraft(); restored = false; }   // правка без дат (до 27.11) — выбрасываем, смена закрыта как была
+    else if (restored && me.closed) countReopen = true;   // начатая правка после закрытия — сразу в форму
     render();
     prefetch();
     if (restored) setTimeout(() => toast('Черновик закрытия восстановлен ✍️'), 400);

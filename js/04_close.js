@@ -100,6 +100,8 @@ function loadDraft() {
   } catch (e) { return false; }
 }
 function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
+// в черновике есть остаток больше нуля без даты с наклейки
+function draftNoDates() { return Object.keys(draft).some(k => /^f?r:/.test(k) && Array.isArray(draft[k]) && draft[k].some(r => { const v = toNum(r.q); return v !== '' && v > 0 && !r.d; })); }
 // «Изменить подсчёт» (с 27.11): копия отправленного — в памяти, в телефоне (по сотруднику и рабочему дню) и у бота (me.closed.edit)
 const SENT_KEY = 'rassvet_close_sent';
 function saveSent(c) {
@@ -200,7 +202,9 @@ Object.assign(views, {
     const offHtml = offs.length ? card(`<h2>🗑 Бот списал — вылили?</h2><p class="sub">Эти заготовки бот списал по сроку. Вылили — жми «✅ Вылили». Заготовка на месте и ещё живая — «↩️ Вернуть». Пока не ответишь по каждой, остатки не внести</p>` +
       offs.map(x => `<div class="batch"><div class="pname"><b>${esc(x.name)} · ${fmt(x.q)} ${esc(x.unit)}</b><span>партия от ${esc(ddm(x.made))}</span>
         <div class="acts" style="margin-top:8px"><button class="tkbtn" data-offok="${esc(x.id)}">✅ Вылили</button><button class="tkbtn" data-offret="${esc(x.id)}">↩️ Вернуть</button></div></div></div>`).join('')) : '';
-    return clHtml + phHtml + cashHtml + offHtml + card(`<h2>Остатки заготовок</h2>${last}${offs.length ? '<p class="sub" style="color:var(--danger)">Сначала ответь про списанные ботом заготовки выше ☝️</p>' : ''}
+    // «Изменить подсчёт»: можно передумать — смена остаётся закрытой как была (с 27.11)
+    const reHtml = countReopen && me.closed ? card(`<h2>✏️ Правишь закрытую смену</h2><p class="sub">Поменяй, что нужно, и нажми «Закрыть смену». Передумал — смена останется закрытой как была</p><button class="btn soft" id="reKeep">↩️ Оставить как было</button>`) : '';
+    return reHtml + clHtml + phHtml + cashHtml + offHtml + card(`<h2>Остатки заготовок</h2>${last}${offs.length ? '<p class="sub" style="color:var(--danger)">Сначала ответь про списанные ботом заготовки выше ☝️</p>' : ''}
       <div style="${offs.length ? 'opacity:.4;pointer-events:none' : ''}"><div class="progress"><i id="prog" style="width:0"></i></div><p class="sub" id="progt" style="margin:0 0 4px"></p>${rows}</div>`) +
       `<div class="dock"><button class="btn" id="send">${cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'}</button></div>`;
   },
@@ -235,11 +239,14 @@ Object.assign(binds, {
     // начатая правка (черновик после закрытия) важнее; иначе — копия из памяти, из телефона, из записи у бота
     if (again) again.onclick = () => {
       lastResult = null; countReopen = true;
+      if (draftNoDates()) { draft = {}; checks.clear(); photos = []; clearDraft(); }   // черновик без дат (правка до 27.11) — берём заново
       const has = checks.size || Object.keys(draft).length || photos.length;
       const c = has ? null : ((sentCopy && sentCopy.day === workDay() ? sentCopy : null) || loadSent() || sentFromBot(me.closed && me.closed.edit));
       if (c) { draft = JSON.parse(JSON.stringify(c.draft)); checks = new Set(c.checks); photos = c.photos.map(p => Object.assign({}, p)); saveDraft(); }
       render(); fillPhotos();
     };
+    const rk = document.getElementById('reKeep');
+    if (rk) rk.onclick = () => { countReopen = false; lastResult = null; draft = {}; checks.clear(); photos = []; cashChk = null; clearDraft(); render(); window.scrollTo(0, 0); toast('Смена закрыта как была 👍'); };
     const btn = document.getElementById('send'); if (!btn) return;
     const cl = me.checklist || [];
     bindPhotos();
