@@ -1,7 +1,7 @@
-// Файл «js/14_mgmt.js»: вкладка «Управление» (админ и те, кому он выдал доступ): подвкладки «Сообщения», «Персонал»…
+// Файл «js/14_mgmt.js»: вкладка «Управление» (админ и те, кому он выдал доступ): подвкладки «Сообщения», «Персонал», «График» (настройки — js/08_grafik.js)…
 // Сообщения: все рассылки бота по расписанию (встроенные + свои) — текст-шаблон, время, частота, кому, вкл/выкл, проверка себе. Бот: 19_msgs.gs
 let mgSub = 'msgs', bmD = null, bmEd = null, mgY = 0;
-const MG_SUBS = [['msgs', '✉️ Сообщения'], ['ppl', '👥 Персонал']];
+const MG_SUBS = [['msgs', '✉️ Сообщения'], ['ppl', '👥 Персонал'], ['gr', '🗓 График']];
 const MG_WD = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const mgHm = m => typeof m === 'number' ? String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0') : '';
 const BM_FREQ = [['d1', 'Каждый день'], ['d2', 'Через день'], ['n', 'Каждые N дней'], ['dows', 'По дням недели']];
@@ -12,6 +12,7 @@ Object.assign(views, {
     const subs = `<div class="mgsubs">${MG_SUBS.map(([k, l]) => `<button class="mgsub ${k === mgSub ? 'on' : ''}" data-mgsub="${k}">${l}</button>`).join('')}</div>`;
     if (mgSub === 'msgs') { bmD = bmD || await call('bmList'); return subs + (bmEd ? bmEdView() : bmListView()); }
     if (mgSub === 'ppl') { acD = acD || await call('acList'); return subs + (acEd ? acEdView() : acListView()); }
+    if (mgSub === 'gr') { grCfgD = grCfgD || await call('grCfg'); return subs + grCfgView(); }
     return subs;
   }
 });
@@ -108,8 +109,9 @@ function bmPayload() {
 Object.assign(binds, {
   mgmt() {
     const $ = id => document.getElementById(id);
-    document.querySelectorAll('[data-mgsub]').forEach(b => b.onclick = () => { if (mgSub === b.dataset.mgsub) return; mgSub = b.dataset.mgsub; bmEd = null; acEd = null; acD = null; render(); });
+    document.querySelectorAll('[data-mgsub]').forEach(b => b.onclick = () => { if (mgSub === b.dataset.mgsub) return; mgSub = b.dataset.mgsub; bmEd = null; acEd = null; acD = null; grCfgD = null; grCfgP = null; grCfgNeed = null; render(); });
     if (mgSub === 'ppl' && acD) return acBind();
+    if (mgSub === 'gr' && grCfgD) return grCfgBind();
     if (mgSub !== 'msgs' || !bmD) return;
     const go = y => { render.toTop = true; return render().then(() => window.scrollTo(0, y || 0)); };
     if (!bmEd) {

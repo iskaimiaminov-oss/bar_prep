@@ -395,7 +395,7 @@
 /* ===== Управление (js/14_mgmt.js) ===== */
 .mgsubs{display:flex;gap:8px;overflow-x:auto;margin:0 0 12px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .mgsubs::-webkit-scrollbar{display:none}
-.mgsub{flex:0 0 auto;border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:8px 14px;font-size:15px;font-weight:600;color:var(--muted);cursor:pointer}
+.mgsub{flex:0 0 auto;border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:8px 12px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer}
 .mgsub.on{background:var(--forest);border-color:var(--forest);color:var(--cream)}
 .mgrow{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line);cursor:pointer}
 .mgrow:first-of-type{border-top:0}

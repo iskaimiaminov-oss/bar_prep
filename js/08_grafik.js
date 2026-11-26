@@ -2,7 +2,6 @@
 Object.assign(views, {
   async grafik() {
     grD = grD || await call('grafik');
-    if (grCfgOn && grD.canEdit) { grCfgD = grCfgD || await call('grCfg'); return grCfgView(); }   // ⚙️ Настройки графика
     const d = grD, r = d.req;
     const dayS = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
     const dmS = s => s.slice(8, 10) + '.' + s.slice(5, 7);
@@ -46,7 +45,7 @@ Object.assign(views, {
     else if (!d.isAdmin) out += empty('🗓', 'Сейчас сбор выходных не идёт', 'Когда админ начнёт составлять график, бот пришлёт сообщение — отметишь дни здесь или кнопками в чате');
     if (!d.isAdmin) return out;
     if (!d.canEdit) out += `<p class="sub" style="margin:0 0 8px">👀 График — только просмотр: составляет и меняет админ</p>`;
-    else out += `<button class="btn soft" id="grCfgBtn">⚙️ Настройки графика: режим потока, люди, смены</button>`;
+    else if (me.mgmt) out += `<button class="btn soft" id="grCfgBtn">⚙️ Настройки графика — в «Управлении»</button>`;
     // админ: по дням — сколько выходных занято (из скольки можно) и кто взял
     if (r && r.open) {   // сбор закрыт — кто какие выходные взял, админу уже не показываем
       const wdL = s => new Date(s + 'T12:00:00Z').toLocaleDateString('ru-RU', { weekday: 'long', timeZone: 'UTC' });
@@ -87,8 +86,7 @@ Object.assign(views, {
 
 Object.assign(binds, {
   grafik() {
-    if (grCfgOn) return grCfgBind();
-    const cb = document.getElementById('grCfgBtn'); if (cb) cb.onclick = () => { grcY.grafik = window.scrollY; grCfgOn = true; grCfgD = null; grCfgP = null; grCfgNeed = null; render.toTop = true; render(); window.scrollTo(0, 0); };
+    const cb = document.getElementById('grCfgBtn'); if (cb) cb.onclick = () => { tab = 'mgmt'; mgSub = 'gr'; bmEd = null; acEd = null; grCfgD = null; grCfgP = null; grCfgNeed = null; render.toTop = true; render(); window.scrollTo(0, 0); };   // настройки живут в «Управлении» (js/14_mgmt.js)
     const act = async (btn, action, payload, ok) => {
       if (btn) btn.disabled = true;
       try { const r = await call(action, payload); grD = r; grSel = null; if (r.msg) toast(r.msg); else if (ok) toast(ok); haptic('success'); render(); return r; }
@@ -174,9 +172,9 @@ Object.assign(binds, {
   },
 });
 
-// ===== «Настройки графика» (только админ): режим потока, сколько людей на смене, правила по сотрудникам =====
-let grCfgOn = false, grCfgD = null, grCfgP = null, grCfgNeed = null;
-const grcY = { grafik: 0, list: 0 };   // где был экран: график до входа в настройки, список сотрудников до входа в карточку
+// ===== «Настройки графика»: показываются в «Управление» → «График» (js/14_mgmt.js): режим потока, сколько людей на смене, правила по сотрудникам =====
+let grCfgD = null, grCfgP = null, grCfgNeed = null;
+const grcY = { list: 0 };   // где был экран: список сотрудников до входа в карточку
 const grcGo = y => { render.toTop = true; return render().then(() => window.scrollTo(0, y || 0)); };   // перерисовать и вернуть экран на место   // grCfgP — правим сотрудника (копия), grCfgNeed — правим «сколько людей»
 const GRC_LV = { S: 'Старший', P: 'Про', B: 'Бариста', T: 'Стажёр' };
 const GRC_WD = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -191,7 +189,7 @@ const grcDm = s => s ? s.slice(8, 10) + '.' + s.slice(5, 7) : '';
 function grCfgView() {
   const c = grCfgD;
   if (!c) return card('<p class="sub">Загружаю настройки…</p>');
-  let out = `<button class="btn soft" id="grcBack">← ${grCfgP ? 'К списку' : 'К графику'}</button>`;
+  let out = grCfgP ? `<button class="btn soft" id="grcBack">← К списку</button>` : '';
   const p = grCfgP;
   if (p) {   // карточка сотрудника
     const cells = [1, 2, 3, 4, 5, 6, 7].map(w => `<tr><th>${GRC_WD[w]}</th>${GRC_SH.map(([s]) => {
@@ -213,7 +211,7 @@ function grCfgView() {
     return out;
   }
   const m = c.modes.find(x => x.id === c.mode) || c.modes[0];
-  out += card(`<h2>⚙️ Настройки графика</h2><p class="sub">Всё, что здесь поменяешь, бот учтёт, когда в следующий раз нажмёшь «Составить» или «Пересоставить». Уже составленный график не меняется</p>
+  out += card(`<h2>⚙️ Настройки графика</h2><p class="sub">Всё, что здесь поменяешь, бот учтёт, когда в следующий раз нажмут «Составить» или «Пересоставить» во вкладке «График». Уже составленный график не меняется</p>
     <h3>Режим потока</h3><div class="grcmodes">${c.modes.map(x => `<button class="grcmode ${x.id === c.mode ? 'on' : ''}" data-grcm="${x.id}"><b>${x.id === 'lo' ? '📉' : '📈'} ${esc(x.name)}</b><span>${esc(x.sub)}</span></button>`).join('')}</div>`);
   const nd = grCfgNeed || m.need;
   out += card(`<h2>👥 Сколько людей на смене</h2><p class="sub">Для режима «${esc(m.name)}». У каждого режима свои числа</p>
@@ -231,7 +229,7 @@ function grCfgBind() {
     catch (e) { toast(e.message); if (btn) btn.disabled = false; return false; }
   };
   const $ = id => document.getElementById(id);
-  const bk = $('grcBack'); if (bk) bk.onclick = () => { if (grCfgP) { grCfgP = null; grcGo(grcY.list); } else { grCfgOn = false; grCfgNeed = null; grcGo(grcY.grafik); } };
+  const bk = $('grcBack'); if (bk) bk.onclick = () => { grCfgP = null; grcGo(grcY.list); };
   document.querySelectorAll('[data-grcm]').forEach(b => b.onclick = async () => {
     const id = b.dataset.grcm; if (id === grCfgD.mode) return;
     const x = grCfgD.modes.find(y => y.id === id);
