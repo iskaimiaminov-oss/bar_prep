@@ -52,8 +52,7 @@ function cashHtml() {
 function openCashForm(kind, op, onDone, pre) {
   closeSheet();
   const d = cashD, st = op ? { src: op.src, kd: op.kd || d.today, cat: op.cat, person: op.person, amount: String(op.amount), note: op.note, back: false }
-    : Object.assign({ src: 'kassa', kd: d.today, cat: '', person: '', amount: '', note: '', back: false, from: '' }, pre || {});
-  if (op) st.from = op.from || '';
+    : Object.assign({ src: 'kassa', kd: d.today, cat: '', person: '', amount: '', note: '', back: false }, pre || {});
   const lbl = ['Сегодня', 'Вчера', 'Позавчера'];
   const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
   const draw = () => {
@@ -63,18 +62,16 @@ function openCashForm(kind, op, onDone, pre) {
         ${st.src === 'kassa' ? `<p class="sub" style="margin-top:10px">Касса за какой день</p><div class="chips">${d.days.map((x, i) => `<button class="chip ${st.kd === x ? 'on' : ''}" data-kd="${x}">${lbl[i]} ${dmy(x)}</button>`).join('')}</div>` : ''}
         <p class="sub" style="margin-top:10px">На что потратили</p><div class="chips">${d.cats.map(c => `<button class="chip ${st.cat === c ? 'on' : ''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
         ${st.cat === 'ЗП стажёру' ? `<p class="sub" style="margin-top:10px">Кому</p><div class="chips">${d.people.map(n => `<button class="chip ${st.person === n ? 'on' : ''}" data-person="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}`
-        : `<p class="sub" style="margin-top:4px">Откуда деньги</p><div class="chips"><button class="chip ${st.from === 'kassa' ? 'on' : ''}" data-from="kassa">Из кассы</button><button class="chip ${st.from === 'other' ? 'on' : ''}" data-from="other">Принесли со стороны</button></div>
-          ${st.from === 'kassa' ? `<p class="sub" style="margin-top:10px">Из кассы за какой день</p><div class="chips">${d.days.map((x, i) => `<button class="chip ${st.kd === x ? 'on' : ''}" data-kd="${x}">${lbl[i]} ${dmy(x)}</button>`).join('')}</div>` : ''}`}
+        : `<p class="sub" style="margin-top:4px">Сумма просто добавится в конверт — касса не меняется.${op && op.from === 'kassa' ? ' Эта старая запись была «из кассы» — так и останется.' : ''}</p>`}
       <div class="form"><label>Сумма</label><input id="cAmt" inputmode="text" placeholder="Например: 200 000 или 200к" value="${esc(st.amount)}">
         <p class="sub" id="cAmtP" style="margin:6px 2px 0">${a > 0 ? '= ' + money(a) : ''}</p>
         <label>${isExp && st.cat === 'Другое' ? 'Название расхода *' : isExp ? 'Описание (необязательно)' : 'Комментарий (необязательно)'}</label>
-        <input id="cNote" maxlength="200" placeholder="${isExp && st.cat === 'Другое' ? 'Например: ремонт кофемолки' : isExp ? 'Например: 10 батонов' : 'Например: из кассы за 19.10'}" value="${esc(st.note)}"></div>
-      ${me.isAdmin && !op && (isExp ? st.src === 'env' : st.from !== 'kassa') ? `<div class="check ${st.back ? 'on' : ''}" id="cBack" style="margin-top:10px"><div class="box">✓</div><div class="pname"><b>Задним числом</b><span>Деньги уже учтены в последнем пересчёте конверта — на «должно быть» не повлияет</span></div></div>` : ''}
+        <input id="cNote" maxlength="200" placeholder="${isExp && st.cat === 'Другое' ? 'Например: ремонт кофемолки' : isExp ? 'Например: 10 батонов' : 'Например: принесли разменные'}" value="${esc(st.note)}"></div>
+      ${me.isAdmin && !op && (isExp ? st.src === 'env' : true) ? `<div class="check ${st.back ? 'on' : ''}" id="cBack" style="margin-top:10px"><div class="box">✓</div><div class="pname"><b>Задним числом</b><span>Деньги уже учтены в последнем пересчёте конверта — на «должно быть» не повлияет</span></div></div>` : ''}
       <button class="btn" id="cSave">${op ? 'Сохранить' : isExp ? 'Записать расход' : 'Внести'}</button>
       ${op ? '<button class="btn soft" id="cDel">Отменить запись</button>' : ''}<button class="btn soft" id="closeSheet">Закрыть</button></div>`;
     const keep = () => { st.amount = wrap.querySelector('#cAmt').value; st.note = wrap.querySelector('#cNote').value; };
     wrap.querySelectorAll('[data-src]').forEach(b => b.onclick = () => { keep(); st.src = b.dataset.src; draw(); });
-    wrap.querySelectorAll('[data-from]').forEach(b => b.onclick = () => { keep(); st.from = b.dataset.from; draw(); });
     wrap.querySelectorAll('[data-kd]').forEach(b => b.onclick = () => { keep(); st.kd = b.dataset.kd; draw(); });
     wrap.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { keep(); st.cat = b.dataset.cat; draw(); });
     wrap.querySelectorAll('[data-person]').forEach(b => b.onclick = () => { keep(); st.person = b.dataset.person; draw(); });
@@ -92,10 +89,9 @@ function openCashForm(kind, op, onDone, pre) {
       const a = parseMoney(st.amount);
       if (!(a > 0)) return toast('Впиши сумму');
       if (kind === 'exp' && !st.cat) return toast('Выбери, на что потратили');
-      if (kind === 'in' && !st.from) return toast('Выбери, откуда деньги');
       if (st.cat === 'ЗП стажёру' && !st.person) return toast('Выбери, кому ЗП');
       if (st.cat === 'Другое' && !st.note.trim()) return toast('Напиши название расхода');
-      send(ev, Object.assign({ kind, amount: a, note: st.note.trim(), src: st.src, kd: st.kd, cat: st.cat, from: st.from, person: st.cat === 'ЗП стажёру' ? st.person : '', back: st.back }, op ? { id: op.id } : {}));
+      send(ev, Object.assign({ kind, amount: a, note: st.note.trim(), src: st.src, kd: st.kd, cat: st.cat, person: st.cat === 'ЗП стажёру' ? st.person : '', back: st.back }, op ? { id: op.id } : {}));
     };
     const del = wrap.querySelector('#cDel');
     if (del) del.onclick = async ev => { if (await confirmBox('Отменить эту запись? Она останется в истории зачёркнутой.')) send(ev, { id: op.id, cancel: true }); };

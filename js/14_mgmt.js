@@ -32,7 +32,12 @@ function bmListView() {
   let out = card(`<h2>✉️ Сообщения бота</h2><p class="sub">Всё, что бот присылает сам по расписанию. Нажми на сообщение — поменять текст, время и частоту. Переключатель справа — включить или выключить</p>
     <button class="btn" id="bmNew">＋ Новое сообщение</button>`);
   if (d.custom.length) out += card(`<h3 style="margin-top:0">Свои</h3>${d.custom.map(bmRow).join('')}`);
-  out += card(`<h3 style="margin-top:0">Встроенные</h3>${d.items.slice().sort(by).map(bmRow).join('')}`);
+  // встроенные — по темам (группы задаёт бот); старый ответ без групп — одним списком
+  const gs = d.groups && d.groups.length ? d.groups : [{ k: '', t: 'Встроенные' }];
+  gs.forEach(g => {
+    const xs = d.items.filter(x => !g.k || (x.g || 'other') === g.k || (!gs.some(y => y.k === x.g) && g.k === 'other')).sort(by);
+    if (xs.length) out += card(`<h3 style="margin-top:0">${esc(g.t)} <span class="sub" style="font-weight:400">· ${xs.length}</span></h3>${xs.map(bmRow).join('')}`);
+  });
   return out;
 }
 function bmFreqK(x) {

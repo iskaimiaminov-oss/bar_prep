@@ -76,6 +76,7 @@ function initPull() {
     if (me.canClose && (h >= 20 || h < 3)) tab = 'count';
     if (me.orderer && !me.isAdmin) tab = 'order';
     if (restored) tab = 'count';
+    if (restored && me.closed) countReopen = true;   // начатая правка после закрытия — сразу в форму
     render();
     prefetch();
     if (restored) setTimeout(() => toast('Черновик закрытия восстановлен ✍️'), 400);

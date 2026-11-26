@@ -439,7 +439,7 @@
 .onum .left.done{background:var(--ok-soft)}
 .olog{font-size:13px;color:var(--muted);margin:4px 0 0;line-height:1.45}
 .odisc{background:var(--warm-soft);border-radius:12px;padding:10px 12px;margin:8px 0;font-size:14px;line-height:1.4}
-.attn{border-left:4px solid var(--warm);padding-left:10px}
+.attn,.revrow.attn{border-left:4px solid var(--warm);padding-left:14px}   /* .revrow.attn — иначе padding у .revrow ниже обнуляет отступ */
 .attn.ok{border-left-color:var(--ok)}
 .flt{display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap}
 .flt input{flex:1 1 160px;min-width:0}

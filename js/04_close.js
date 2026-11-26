@@ -100,6 +100,39 @@ function loadDraft() {
   } catch (e) { return false; }
 }
 function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
+// «Изменить подсчёт» (с 27.11): копия отправленного — в памяти, в телефоне (по сотруднику и рабочему дню) и у бота (me.closed.edit)
+const SENT_KEY = 'rassvet_close_sent';
+function saveSent(c) {
+  const data = { who: me && me.name, day: c.day, draft: c.draft, checks: c.checks, photos: c.photos.map(p => ({ id: p.id, src: p.src })) };
+  try { localStorage.setItem(SENT_KEY, JSON.stringify(data)); }
+  catch (e) { try { data.photos = data.photos.map(p => ({ id: p.id, src: '' })); localStorage.setItem(SENT_KEY, JSON.stringify(data)); } catch (e2) {} }
+}
+function loadSent() {
+  try {
+    const d = JSON.parse(localStorage.getItem(SENT_KEY) || 'null');
+    if (!d || d.who !== (me && me.name) || d.day !== workDay()) return null;
+    return { day: d.day, draft: d.draft || {}, checks: d.checks || [], photos: (d.photos || []).map(p => p.src ? { id: p.id, src: p.src } : { id: p.id, src: LOGO, lazy: 1 }) };
+  } catch (e) { return null; }
+}
+// из записи закрытия у бота: строки по датам (если бот их сохранил), иначе одной строкой; фото подгрузим по id
+function sentFromBot(e) {
+  if (!e) return null;
+  const dr = {}, rowsOf = (rs, v) => Array.isArray(rs) && rs.length ? rs.map(r => ({ q: fmt(r.q), d: r.d || '' })) : [{ q: fmt(v), d: '' }];
+  Object.keys(e.values || {}).forEach(pid => { dr['r:' + pid] = rowsOf((e.rq || {})[pid], e.values[pid]); });
+  Object.keys(e.fz || {}).forEach(pid => { dr['fr:' + pid] = rowsOf((e.fq || {})[pid], e.fz[pid]); });
+  if (e.cash) ['ik', 'cf', 'env'].forEach(k => { if (e.cash[k] !== '' && e.cash[k] != null) dr['$' + k] = String(e.cash[k]); });
+  return { day: workDay(), draft: dr, checks: e.checks || [], photos: (e.photos || []).map(id => ({ id, src: LOGO, lazy: 1 })) };
+}
+// фото из копии без картинки — подгружаем у бота и перерисовываем сетку
+function fillPhotos() {
+  photos.filter(p => p.lazy && p.id).forEach(async p => {
+    try {
+      photoCache[p.id] = photoCache[p.id] || call('photo', { id: p.id }).then(r => r.data);
+      p.src = await photoCache[p.id]; delete p.lazy; saveDraft();
+    } catch (e) { delete photoCache[p.id]; delete p.lazy; }
+    const g = document.getElementById('phgrid'); if (g) { g.innerHTML = photosGrid(); bindPhotos(); }
+  });
+}
 
 function photosGrid() {
   return photos.map((p, k) => `<div class="ph ${p.loading ? 'loading' : ''}"><img src="${p.src}" alt="" data-ph="${k}"><button class="x" data-phdel="${k}">×</button></div>`).join('') +
@@ -199,10 +232,13 @@ Object.assign(binds, {
   count() {
     const again = document.getElementById('again');
     // «Изменить подсчёт»: возвращаем всё, что отправили (остатки, даты, морозилка, касса, чек-лист, фото)
+    // начатая правка (черновик после закрытия) важнее; иначе — копия из памяти, из телефона, из записи у бота
     if (again) again.onclick = () => {
       lastResult = null; countReopen = true;
-      if (sentCopy) { draft = JSON.parse(JSON.stringify(sentCopy.draft)); checks = new Set(sentCopy.checks); photos = sentCopy.photos.map(p => Object.assign({}, p)); saveDraft(); }
-      render();
+      const has = checks.size || Object.keys(draft).length || photos.length;
+      const c = has ? null : ((sentCopy && sentCopy.day === workDay() ? sentCopy : null) || loadSent() || sentFromBot(me.closed && me.closed.edit));
+      if (c) { draft = JSON.parse(JSON.stringify(c.draft)); checks = new Set(c.checks); photos = c.photos.map(p => Object.assign({}, p)); saveDraft(); }
+      render(); fillPhotos();
     };
     const btn = document.getElementById('send'); if (!btn) return;
     const cl = me.checklist || [];
@@ -304,7 +340,7 @@ Object.assign(binds, {
       const after = async () => { await runChk(cashNow()); };
       const openF = async (kind, pre) => { try { if (!cashD) cashD = await call('cash'); openCashForm(kind, null, after, pre); } catch (e) { toast(e.message); } };
       box.querySelector('#chkExp').onclick = () => openF('exp', { src: Math.abs(r.kd) > r.tol || !r.known ? 'kassa' : 'env' });
-      box.querySelector('#chkIn').onclick = () => openF('in', { from: r.kd > r.tol || (r.kd < -r.tol && r.ed > r.tol) ? 'kassa' : '' });
+      box.querySelector('#chkIn').onclick = () => openF('in');
     };
     // разбор недостачи пройден: оба шага и объяснение своими словами
     const chkDone = () => !!(cashChk && cashChk.s1 && cashChk.s2 && (cashChk.note || '').trim().length >= ((cashChk.res && cashChk.res.noteMin) || 15) && (cashChk.note || '').trim().split(/\s+/).length >= 2);
@@ -406,7 +442,7 @@ Object.assign(binds, {
       }
       const cashWhy = cashChk && cashChk.res && cashChk.res.short ? { s1: !!cashChk.s1, s2: !!cashChk.s2, note: (cashChk.note || '').trim() } : null, cashFirst = cashChk ? cashChk.first : null;
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values, rq, fq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); countReopen = false; me.closed = { by: me.name, at: Date.now(), items: lastResult.items || [] }; sentCopy = { draft: JSON.parse(JSON.stringify(draft)), checks: [...checks], photos: photos.filter(p => p.id).map(p => Object.assign({}, p)) }; draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
+      try { lastResult = await call('count', { values, rq, fq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); countReopen = false; me.closed = { by: me.name, at: Date.now(), items: lastResult.items || [] }; sentCopy = { day: workDay(), draft: JSON.parse(JSON.stringify(draft)), checks: [...checks], photos: photos.filter(p => p.id).map(p => Object.assign({}, p)) }; saveSent(sentCopy); draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
