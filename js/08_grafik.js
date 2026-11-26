@@ -44,6 +44,10 @@ Object.assign(views, {
     } else if (r && !r.open && !d.isAdmin) out += empty('🗓', 'Сбор выходных закончен', `Пожелания на ${dmS(r.from)}–${dmS(r.to)} собраны — скоро будет график`);
     else if (!d.isAdmin) out += empty('🗓', 'Сейчас сбор выходных не идёт', 'Когда админ начнёт составлять график, бот пришлёт сообщение — отметишь дни здесь или кнопками в чате');
     if (!d.isAdmin) return out;
+    // заявки, где нужно решение админа (заявления, отпуск/больничный, замены) — самым верхом (с 26.11)
+    const pend = d.pend || [];
+    if (pend.length) out = card(`<h2>🔔 Ждут твоего решения (${pend.length})</h2>` + pend.map(x => `<div class="revrow attn"><div class="grow"><b>${esc(x.name)}</b> · ${esc(dmS(x.date))}<div>${esc(x.text)}</div></div>
+      ${d.canEdit ? `<button class="tkbtn" data-grdec="${esc(x.kind + '|' + x.id)}" data-ok="1">✅</button><button class="tkbtn" data-grdec="${esc(x.kind + '|' + x.id)}" data-ok="0" style="margin-left:6px">❌</button>` : ''}</div>`).join('')) + out;
     if (!d.canEdit) out += `<p class="sub" style="margin:0 0 8px">👀 График — только просмотр: составляет и меняет админ</p>`;
     else if (me.mgmt) out += `<button class="btn soft" id="grCfgBtn">⚙️ Настройки графика — в «Управлении»</button>`;
     // админ: по дням — сколько выходных занято (из скольки можно) и кто взял
@@ -93,6 +97,11 @@ Object.assign(binds, {
       catch (e) { toast(e.message); if (btn) btn.disabled = false; }
     };
     const keepNote = () => { const n = document.getElementById('grNote'); if (n) grForm.note = n.value; };
+    document.querySelectorAll('[data-grdec]').forEach(b => b.onclick = async () => {
+      const [kind, ...rest] = b.dataset.grdec.split('|'), ok = b.dataset.ok === '1';
+      if (!(await confirmBox(ok ? 'Одобрить? Сотрудник получит ответ в боте' : 'Отказать? Сотрудник получит ответ в боте'))) return;
+      act(b, 'grDecide', { kind, id: rest.join('|'), ok });
+    });
     document.querySelectorAll('[data-grday]').forEach(b => b.onclick = () => {
       const x = b.dataset.grday;
       if (!grSel.has(x) && grSel.size + ((grD.days || []).filter(y => y.z === 'ok' || y.z === 'wait').length) >= (grD.maxOff || 3)) return toast(grD.maxOff === 2 ? 'Выходной можно взять только в сб или вс' : 'Можно не больше 3 выходных в неделю');

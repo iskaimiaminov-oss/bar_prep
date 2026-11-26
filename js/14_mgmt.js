@@ -1,7 +1,7 @@
 // Файл «js/14_mgmt.js»: вкладка «Управление» (админ и те, кому он выдал доступ): подвкладки «Сообщения», «Персонал», «График» (настройки — js/08_grafik.js), «Журнал»
 // Сообщения: все рассылки бота по расписанию (встроенные + свои) — текст-шаблон, время, частота, кому, вкл/выкл, проверка себе. Бот: 19_msgs.gs
-let mgSub = 'msgs', bmD = null, bmEd = null, mgY = 0;
-const MG_SUBS = [['msgs', '✉️ Сообщения'], ['ppl', '👥 Персонал'], ['gr', '🗓 График'], ['log', '📜 Журнал']];
+let mgSub = 'attn', bmD = null, bmEd = null, mgY = 0;   // с 26.11 первой открывается «⚠️ Внимание»
+const MG_SUBS = [['attn', '⚠️ Внимание'], ['msgs', '✉️ Сообщения'], ['ppl', '👥 Персонал'], ['gr', '🗓 График'], ['close', '🌙 Закрытие'], ['flow', '📊 Расход'], ['log', '📜 Журнал']];
 const MG_WD = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const mgHm = m => typeof m === 'number' ? String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0') : '';
 const BM_FREQ = [['d1', 'Каждый день'], ['d2', 'Через день'], ['n', 'Каждые N дней'], ['dows', 'По дням недели']];
@@ -14,6 +14,9 @@ Object.assign(views, {
     if (mgSub === 'ppl') { acD = acD || await call('acList'); return subs + (acEd ? acEdView() : acListView()); }
     if (mgSub === 'gr') { grCfgD = grCfgD || await call('grCfg'); return subs + grCfgView(); }
     if (mgSub === 'log') { mlD = mlD || await call('mlList'); return subs + mlView(); }
+    if (mgSub === 'flow') { flD = flD || await call('flowView', { weeks: flW }); return subs + flView(); }
+    if (mgSub === 'close') return subs + clView();
+    if (mgSub === 'attn') { atD = atD || await call('attn'); return subs + atView(); }
     return subs;
   }
 });
@@ -110,10 +113,13 @@ function bmPayload() {
 Object.assign(binds, {
   mgmt() {
     const $ = id => document.getElementById(id);
-    document.querySelectorAll('[data-mgsub]').forEach(b => b.onclick = () => { if (mgSub === b.dataset.mgsub) return; mgSub = b.dataset.mgsub; bmEd = null; acEd = null; acD = null; grCfgD = null; grCfgP = null; grCfgNeed = null; mlD = null; mlF = ''; mlMore = 0; render(); });
+    document.querySelectorAll('[data-mgsub]').forEach(b => b.onclick = () => { if (mgSub === b.dataset.mgsub) return; mgSub = b.dataset.mgsub; flD = null; atD = null; clEd = null; bmEd = null; acEd = null; acD = null; grCfgD = null; grCfgP = null; grCfgNeed = null; mlD = null; mlF = ''; mlMore = 0; render(); });
     if (mgSub === 'ppl' && acD) return acBind();
     if (mgSub === 'gr' && grCfgD) return grCfgBind();
     if (mgSub === 'log') return mlBind();
+    if (mgSub === 'flow') return flBind();
+    if (mgSub === 'close') return clBind();
+    if (mgSub === 'attn') return atBind();
     if (mgSub !== 'msgs' || !bmD) return;
     const go = y => { render.toTop = true; return render().then(() => window.scrollTo(0, y || 0)); };
     if (!bmEd) {
@@ -241,7 +247,7 @@ function acBind() {
 }
 // ---- «Журнал»: кто, когда и что поменял в «Управлении» (MGMT_LOG, последние 300). Бот: mlog / mlList в 19_msgs.gs ----
 let mlD = null, mlF = '', mlMore = 0;
-const ML_SEC = { 'Сообщения': '✉️', 'Персонал': '👥', 'График': '🗓' };
+const ML_SEC = { 'Сообщения': '✉️', 'Персонал': '👥', 'График': '🗓', 'Заготовки': '🫙', 'Закрытие': '🌙' };
 function mlDay(ts) {
   const d = new Date(ts), t = new Date(), y = new Date(Date.now() - 864e5), same = (a, b) => a.toDateString() === b.toDateString();
   return same(d, t) ? 'Сегодня' : same(d, y) ? 'Вчера' : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
@@ -264,4 +270,67 @@ function mlView() {
 function mlBind() {
   document.querySelectorAll('[data-mlf]').forEach(b => b.onclick = () => { mlF = b.dataset.mlf; mlMore = 0; softRender(); });
   const m = document.getElementById('mlMore'); if (m) m.onclick = () => { mlMore += 60; softRender(); };
+}
+
+// ---- «Расход» (с 26.11): движение заготовок по отдельности — бар, точки, списания, морозилка; совет по нормам. Бот: prepFlow / flowView в 04_prep.gs ----
+let flD = null, flW = 4;
+function flView() {
+  const d = flD, dd = s => s.slice(8, 10) + '.' + s.slice(5, 7), n = x => fmt(x);
+  let h = `<h2>📊 Расход заготовок</h2><p class="sub">${dd(d.from)}–${dd(d.to)}. «Бар» — что ушло на баре; выдачи точкам, списания и морозилка — отдельно. Где по старым данным не понять, куда ушёл объём, — «не удалось определить», в совет такие дни не идут</p>
+    <div class="chips" style="margin-bottom:6px"><button class="chip ${flW === 1 ? 'on' : ''}" data-flw="1">Неделя</button><button class="chip ${flW === 4 ? 'on' : ''}" data-flw="4">4 недели</button></div>`;
+  const rows = d.list.filter(x => x.bar || x.iss || x.waste || x.frz || x.thaw || x.unk || x.days);
+  h += rows.length ? rows.map(x => `<div class="revrow"><div class="grow"><b>${esc(x.name)}</b>${x.arch ? ' <span class="tag-chk">архив</span>' : ''}
+      <div class="olog">🍹 бар <b>${n(x.bar)}</b> ${esc(x.unit)}${x.iss ? ' · 📦 точкам ' + n(x.iss) : ''}${x.waste ? ' · 🗑 списано ' + n(x.waste) : ''}${x.frz ? ' · ❄️ в морозилку ' + n(x.frz) : ''}${x.thaw ? ' · разморозили ' + n(x.thaw) : ''}${x.unk ? ` · <span style="color:var(--danger)">❓ не удалось определить ${n(x.unk)} (${x.unkDays} дн.)</span>` : ''}</div>
+      <div class="olog">учтено дней: ${x.days} из ${d.days}</div></div></div>`).join('') : '<p class="sub">Пока нет пар закрытий подряд — посчитать не из чего</p>';
+  let a = `<h2>🧪 Нормы — совет</h2><p class="sub">По расходу на баре за 4 недели, только по дням, где расчёта хватает (нужно минимум ${d.minDays}). Менять нормы — только вручную: кнопка «✅ Изменить нормы» в сообщении бота у админа</p>`;
+  a += d.adv.length ? d.adv.map(x => `<div class="revrow"><div class="grow"><b>${esc(x.name)}</b><div class="olog">сейчас ${n(x.cur)} → по расходу ${n(x.to)} ${esc(x.unit)} · учтено ${x.n} дн.</div></div>${x.adv ? `<span class="tag-late">${x.to > x.cur ? '⬆️' : '⬇️'} поменять</span>` : '<span class="tag-chk">ок</span>'}</div>`).join('')
+    : `<p class="sub">Мало данных: ни по одной заготовке нет ${d.minDays} учтённых дней</p>`;
+  a += `<button class="btn soft" id="flSend" style="margin-top:10px">📨 Прислать совет мне в Телеграм</button>`;
+  return card(h) + card(a);
+}
+function flBind() {
+  document.querySelectorAll('[data-flw]').forEach(b => b.onclick = () => { flW = +b.dataset.flw; flD = null; render(); });
+  const s = document.getElementById('flSend'); if (s) s.onclick = async () => { s.disabled = true; try { await call('useSendMe'); toast('Отправил в Телеграм 📨'); } catch (e) { toast(e.message); } s.disabled = false; };
+}
+
+// ---- «⚠️ Внимание» (с 26.11): всё, что требует решения управляющего, в одном месте. Бот: attnList в 20_audit.gs (права проверяет бот) ----
+let atD = null;
+const AT_IC = { iss: '📦', batch: '🧊', auto: '🗑', stock: '⚖️', yield: '📉', label: '🏷' };
+const AT_LBL = { iss: 'Выдача расходится', batch: 'Партия требует проверки', auto: 'Бот списал — ждёт ответа', stock: 'Расходятся остатки', yield: 'Факт ниже плана', label: 'Наклейка не подтверждена' };
+const AT_GO = { today: ['today', 'Открыть «Сегодня»'], fridge: ['fridge', 'Открыть «Холодильник»'], flow: ['flow', 'Открыть «Расход»'] };
+function atView() {
+  const it = (atD && atD.items) || [];
+  let h = `<h2>⚠️ Требует внимания</h2><p class="sub">Отклонения за последние дни: выдача точкам, просрочка, остатки, выход ниже плана, наклейки. Нажми «Перейти» — откроется нужное место</p>`;
+  if (!it.length) return card(h + `<div class="status"><span class="big">✅</span>Всё в порядке — ничего не требует внимания</div>`);
+  h += it.map((x, k) => `<div class="revrow attn"><div class="grow"><b>${AT_IC[x.k] || '•'} ${esc(AT_LBL[x.k] || '')}</b><div>${esc(x.t)}</div>
+    <div class="olog">${x.who ? esc(x.who) + ' · ' : ''}${esc(fmtTs(x.at))}${x.hist ? ' · ' + esc(x.hist) : ''}</div></div>
+    ${AT_GO[x.link] ? `<button class="tkbtn" data-atgo="${k}">Перейти</button>` : ''}</div>`).join('');
+  if (atD.total > it.length) h += `<p class="sub">…и ещё ${atD.total - it.length}</p>`;
+  return card(h);
+}
+function atBind() {
+  document.querySelectorAll('[data-atgo]').forEach(b => b.onclick = () => {
+    const x = atD.items[+b.dataset.atgo], g = AT_GO[x.link]; if (!g) return;
+    if (g[0] === 'flow') { mgSub = 'flow'; flD = null; } else { tab = g[0]; if (g[0] === 'fridge') fridgeData = null; if (g[0] === 'today') { homeData = null; homeP = null; } }
+    render.toTop = true; render().then(() => window.scrollTo(0, 0));
+  });
+}
+// ---- «🌙 Закрытие»: чек-лист закрытия (перенесён из «Заготовок», пункты те же). Бот: checklistSave в 20_audit.gs ----
+let clEd = null;
+function clView() {
+  if (!clEd) clEd = (me.checklist || []).slice();
+  return card(`<h2>🌙 Чек-лист закрытия</h2><p class="sub">Пункты, которые отмечают на закрытии смены. Изменения пишутся в «Журнал»</p><div id="cl">` +
+    clEd.map((t, k) => `<div class="cl-row edit" style="padding:8px;margin-bottom:8px"><input data-cl value="${esc(t)}" placeholder="Например: почистить кофемашину"><button class="x" data-cldel="${k}">×</button></div>`).join('') +
+    `</div><button class="btn soft" id="cladd">+ Добавить пункт</button><button class="btn" id="clsave">Сохранить чек-лист</button>`);
+}
+function clBind() {
+  const keep = () => { clEd = [...document.querySelectorAll('[data-cl]')].map(i => i.value); };
+  const a = document.getElementById('cladd'); if (!a) return;
+  a.onclick = () => { keep(); clEd.push(''); render().then(() => { const l = document.querySelectorAll('[data-cl]'); if (l.length) { l[l.length - 1].focus(); l[l.length - 1].scrollIntoView({ block: 'center' }); } }); };
+  document.querySelectorAll('[data-cldel]').forEach(b => b.onclick = () => { keep(); clEd.splice(+b.dataset.cldel, 1); render(); });
+  document.getElementById('clsave').onclick = async e => {
+    keep(); e.target.disabled = true;
+    try { const r = await call('mgChecklist', { items: clEd }); me.checklist = r.checklist; clEd = null; if (cfg) cfg.checklist = r.checklist; mlD = null; toast('Чек-лист сохранён ✅'); haptic('success'); render(); }
+    catch (err) { toast(err.message); e.target.disabled = false; }
+  };
 }

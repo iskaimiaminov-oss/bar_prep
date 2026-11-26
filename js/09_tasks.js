@@ -108,20 +108,24 @@ Object.assign(views, {
   async tasks() {
     if (!taskData) taskData = await call('tasks');
     const d = taskData;
-    const open = d.mine.filter(t => !t.doneMe), done = d.mine.filter(t => t.doneMe);
+    const open = d.mine.filter(t => !t.doneMe).sort((a, b) => (b.overdue ? 1 : 0) - (a.overdue ? 1 : 0)), done = d.mine.filter(t => t.doneMe);
+    const dueS = t => t.dueDate ? ' · до ' + t.dueDate.slice(8, 10) + '.' + t.dueDate.slice(5, 7) : '';
     const row = t => `<div class="task ${t.doneMe ? 'done' : ''}"><div class="box" ${t.doneMe ? '' : `data-tdone="${esc(t.id)}"`}>✓</div>
-      <div class="pname"><b>${esc(t.text)}</b><span>от ${esc(t.byName)}${t.due ? ' · срок: ' + esc(t.due) : ''}</span></div></div>`;
+      <div class="pname"><b>${esc(t.text)}${t.overdue && !t.doneMe ? '<span class="tag-late">просрочено</span>' : ''}</b><span>от ${esc(t.byName)}${t.due ? ' · срок: ' + esc(t.due) : ''}${dueS(t)}</span></div></div>`;
     let out = card(`<h2>Мои задачи</h2><p class="sub">${open.length ? 'Сделал — нажми на квадрат и приложи 2–5 фото результата' : 'Все задачи выполнены 🎉'}</p>` +
       (open.length ? open.map(row).join('') : '') + (done.length ? `<h3>Выполнено</h3>` + done.slice(0, 10).map(row).join('') : ''));
     if (d.canCreate) {
       out += card(`<h2>Поставить задачу</h2><div class="form">
         <label>Что нужно сделать<textarea id="tText" rows="3" placeholder="Например: протереть полки за кофемашиной"></textarea></label>
         <label>Срок (необязательно)<input id="tDue" placeholder="до пятницы, до 18:00…"></label>
+        <label>Дата срока — чтобы видеть просрочку (необязательно)<input id="tDueD" type="date"></label>
         <label>Кому</label>${audiencePicker(taskForm, d, 't')}
         <button class="btn" id="tAdd">Поставить задачу</button></div>`);
-      if (d.created.length) out += card(`<h2>Поставленные</h2>` + d.created.map(t => `<div class="task"><div class="pname"><b>${esc(t.text)}</b>
+      const cr = d.created.slice().sort((a, b) => ((b.overdue ? 2 : 0) + (b.waitChk ? 1 : 0)) - ((a.overdue ? 2 : 0) + (a.waitChk ? 1 : 0)));
+      const nOver = cr.filter(t => t.overdue).length, nChk = cr.filter(t => t.waitChk).length;
+      if (cr.length) out += card(`<h2>Поставленные</h2>${nOver || nChk ? `<p class="sub">${nOver ? '⏰ Просрочено: <b>' + nOver + '</b>' : ''}${nOver && nChk ? ' · ' : ''}${nChk ? '👀 Ждут проверки: <b>' + nChk + '</b>' : ''} — они сверху</p>` : ''}` + cr.map(t => `<div class="task ${t.overdue || t.waitChk ? 'attn' : ''}"><div class="pname"><b>${esc(t.text)}${t.overdue ? '<span class="tag-late">просрочено</span>' : ''}${t.waitChk ? '<span class="tag-chk">ждёт проверки</span>' : ''}</b>
         <span>${esc(t.to)} · готово ${t.doneCnt}/${t.total}${t.leftNames.length && t.leftNames.length <= 6 ? ' · ждём: ' + esc(t.leftNames.join(', ')) : ''}</span></div>${(t.photos || []).length ? `<button class="tkbtn" data-tph="${esc(t.id)}">📷 ${t.photos.reduce((a, g) => a + g.ids.length, 0)}</button>` : ''}
-        <button class="x" data-tdel="${esc(t.id)}">×</button></div>`).join(''));
+        ${t.waitChk && t.canChk ? `<button class="tkbtn" data-tchk="${esc(t.id)}" style="margin-left:6px">✅ Проверил</button>` : ''}<button class="x" data-tdel="${esc(t.id)}">×</button></div>`).join(''));
     }
     return out;
   },
@@ -139,18 +143,19 @@ Object.assign(binds, {
       if (!(await confirmBox('Отметить задачу выполненной? Тот, кто поставил, получит уведомление.'))) return;
       try { await call('taskDone', { id: b.dataset.tdone }); haptic('success'); toast('Молодец! ✅'); taskData = null; me.openTasks = Math.max(0, (me.openTasks || 1) - 1); render(); } catch (e) { toast(e.message); }
     });
+    document.querySelectorAll('[data-tchk]').forEach(b => b.onclick = async () => { b.disabled = true; try { await call('taskCheck', { id: b.dataset.tchk }); taskData = null; haptic('success'); toast('Отмечено: проверено ✅'); render(); } catch (e) { toast(e.message); b.disabled = false; } });
     document.querySelectorAll('[data-tdel]').forEach(b => b.onclick = async () => {
       if (!(await confirmBox('Удалить задачу?'))) return;
       try { await call('taskDel', { id: b.dataset.tdel }); taskData = null; render(); } catch (e) { toast(e.message); }
     });
     const add = document.getElementById('tAdd'); if (!add) return;
     add.onclick = async () => {
-      const text = document.getElementById('tText').value.trim(), due = document.getElementById('tDue').value.trim();
+      const text = document.getElementById('tText').value.trim(), due = document.getElementById('tDue').value.trim(), dueDate = (document.getElementById('tDueD') || {}).value || '';
       if (!text) return toast('Напиши, что нужно сделать');
       if (taskForm.mode === 'status' && !taskForm.statuses.length) return toast('Выбери статус');
       if (taskForm.mode === 'people' && !taskForm.ids.length) return toast('Выбери людей');
       add.disabled = true; add.textContent = 'Отправляю…';
-      try { const r = await call('taskAdd', { text, due, to: taskForm, _back: ['me'] }); haptic('success'); toast('Задача отправлена ✅');
+      try { const r = await call('taskAdd', { text, due, dueDate, to: taskForm, _back: ['me'] }); haptic('success'); toast('Задача отправлена ✅');
         Object.keys(formKeep).filter(k => k[0] === 't').forEach(k => delete formKeep[k]); taskData = null; me = r._me || await call('me'); render(); }
       catch (e) { toast(e.message); add.disabled = false; add.textContent = 'Поставить задачу'; }
     };

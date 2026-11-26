@@ -423,3 +423,32 @@
 .mgtxt b .stb{margin-left:6px}
 .mgrow.mlrow{cursor:default;align-items:flex-start}
 .mlrow .mgtxt b{font-weight:600;font-size:14.5px}
+/* 26.11: вопрос «Имелось в виду 1,6 л?», ошибки техкарт, заказы точек, отклонения, черновые проверки */
+.bigask-bg{position:fixed;inset:0;background:rgba(10,51,32,.5);z-index:60;display:grid;place-items:center;padding:16px}
+.bigask{background:var(--paper);border-radius:18px;padding:18px 16px;width:100%;max-width:420px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.bigask .btn{margin:0;padding:12px 8px;font-size:15px}
+.amount.bad,.field.bad{border-color:var(--danger)!important}
+.tkerr{background:var(--warm-soft);color:var(--danger);border-radius:14px;padding:12px 14px;margin:10px 0;font-size:14px;line-height:1.4}
+.tkplan{display:flex;justify-content:space-between;align-items:center;background:var(--olive-soft);border-radius:14px;padding:10px 14px;margin:10px 0 0;font-size:15px}
+.ing.zero .field{background:var(--warm-soft)}
+.onum{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0 4px}
+.onum div{background:var(--cream);border-radius:12px;padding:7px 4px;text-align:center;line-height:1.2}
+.onum small{display:block;font-size:11px;color:var(--muted)}
+.onum b{font-size:15px}
+.onum .left{background:var(--warm-soft)}
+.onum .left.done{background:var(--ok-soft)}
+.olog{font-size:13px;color:var(--muted);margin:4px 0 0;line-height:1.45}
+.odisc{background:var(--warm-soft);border-radius:12px;padding:10px 12px;margin:8px 0;font-size:14px;line-height:1.4}
+.attn{border-left:4px solid var(--warm);padding-left:10px}
+.attn.ok{border-left-color:var(--ok)}
+.flt{display:flex;gap:8px;margin:0 0 10px;flex-wrap:wrap}
+.flt input{flex:1 1 160px;min-width:0}
+.pvbox{background:var(--cream);border-radius:12px;padding:10px 12px;margin-top:8px;font-size:14px;line-height:1.4}
+.revrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
+.revrow:first-of-type{border-top:0}
+.revrow .grow{flex:1;min-width:0}
+.tag-late{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--warm-soft);color:var(--danger);margin-left:6px}
+.tag-chk{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--olive-soft);color:var(--forest);margin-left:6px}
+.emptybtn{border:0;background:var(--cream);color:var(--forest);border-radius:10px;padding:8px 10px;font-size:13px;font-weight:600;cursor:pointer}
+.ydiff{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+.flt input{border:1.5px solid var(--line);background:var(--card);color:var(--forest);border-radius:12px;padding:11px 12px;font-size:16px;outline:none}

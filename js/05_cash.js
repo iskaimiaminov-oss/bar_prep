@@ -20,6 +20,10 @@ function cashOpRow(o) {
 }
 function cashHtml() {
   const d = cashD, out = [];
+  const rv = d.rev && d.rev.list || [];   // с 26.11: неразобранные расхождения на закрытиях — первыми
+  if (rv.length) out.push(card(`<h2>⚠️ Расхождения — не разобраны (${rv.length})</h2><p class="sub">Касса или конверт на закрытии не сошлись больше чем на 20 000. ${d.rev.can ? 'Разобрался — жми «Разобрано»' : 'Разбирает управляющий'}</p>` +
+    rv.map(x => `<div class="revrow attn"><div class="grow"><b>${esc(dmy(x.date))} · ${esc(x.by)}</b><div>${x.kd ? '🧾 касса ' + (x.kd < 0 ? 'недостача ' : 'лишние ') + esc(money(Math.abs(x.kd))) : ''}${x.kd && x.ed ? ' · ' : ''}${x.ed ? '✉️ конверт ' + (x.ed < 0 ? 'недостача ' : 'лишние ') + esc(money(Math.abs(x.ed))) : ''}</div>${x.why ? `<div class="olog">💬 «${esc(x.why)}»</div>` : ''}</div>
+      ${d.rev.can ? `<button class="tkbtn" data-crev="${esc(x.date)}">✅ Разобрано</button>` : ''}</div>`).join('')));
   out.push(card(`<h2>💵 Наличные</h2><p class="sub">Потратил из кассы или из конверта — сразу запиши сюда. Положил деньги в конверт — нажми «+ Внести»</p>
     <div style="display:flex;gap:8px"><button class="btn" id="cExp" style="flex:1;margin-top:0">− Расход</button><button class="btn ok" id="cIn" style="flex:1;margin-top:0">+ Внести</button></div>`));
   if (d.env) {
@@ -111,6 +115,10 @@ Object.assign(binds, {
     const e = document.getElementById('cExp'), i = document.getElementById('cIn');
     if (e) e.onclick = () => openCashForm('exp');
     if (i) i.onclick = () => openCashForm('in');
+    document.querySelectorAll('[data-crev]').forEach(b => b.onclick = async () => {   // расхождение разобрано (управляющий)
+      if (!(await confirmBox('Отметить расхождение за ' + dmy(b.dataset.crev) + ' разобранным?'))) return;
+      b.disabled = true; try { cashD = await call('cashRev', { date: b.dataset.crev }); haptic('success'); toast('Разобрано ✅'); render(); } catch (e) { toast(e.message); b.disabled = false; }
+    });
     document.querySelectorAll('[data-cfold]').forEach(b => b.onclick = () => { cashFold[b.dataset.cfold] = b.dataset.open !== '1'; cashD.fresh = true; render(); });   // раскрыть/свернуть — без запроса к боту
     document.querySelectorAll('[data-cedit]').forEach(b => b.onclick = () => { const o = cashD.ops.find(x => x.id === b.dataset.cedit); if (o) openCashForm(o.kind, o); });
   },

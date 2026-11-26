@@ -7,33 +7,56 @@ const fmt = x => String(Math.round(Number(x) * 100) / 100).replace('.', ',');
 const fmtTs = ts => { const d = new Date(ts); return d.toLocaleDateString('ru-RU',{day:'numeric',month:'long'}) + ', ' + d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}); };
 const norm2 = s => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const toNum = v => { const s = String(v).replace(/\s/g, '').replace(',', '.'); return s === '' ? '' : Number(s); };
-// Вписали граммы/мл вместо кг/л (1600 вместо 1,6): в кг/л больше 50 не бывает — спрашиваем «Ты имел в виду 1,6 кг?».
-// list: [{ v, unit, name, inp }]. ОК — число в поле и в list поправится; Отмена — false, человек исправит сам
+// Вписали граммы/мл вместо кг/л (1600 вместо 1,6): в кг/л больше 50 не бывает. С 26.11 число САМИ НЕ МЕНЯЕМ —
+// спрашиваем «Имелось в виду 1,6 л?»: «Да» — поправим, «Нет» — оставляем как вписали и показываем ошибку (больше 50 бот не примет)
 const UNIT_BIG = /^(л|l|литр\S*|кг|kg|килограмм\S*)$/i, BIG_MAX = 50;
-// Число в кг/л больше 50 — значит, вписали граммы/мл: 1600 → 1,6. Меняем сами, без вопроса
 const bigTo = (v, unit) => { const u = String(unit || '').trim().replace(/\.$/, ''); return UNIT_BIG.test(u) && v > BIG_MAX ? Math.round(v / 10) / 100 : null; };
 const unitOfInp = inp => { const w = inp.closest('.field,.amount'); const el = w && w.querySelector('small,b'); return inp.dataset.unit || (el ? el.textContent : ''); };
-function autoBig(inp, quiet) {
-  const v = toNum(inp.value); if (v === '' || isNaN(v)) return null;
-  const u = String(unitOfInp(inp)).trim(), g = bigTo(v, u); if (g == null) return null;
-  inp.value = fmt(g); inp.dispatchEvent(new Event('input', { bubbles: true }));
-  if (!quiet) toast(fmt(v) + ' → ' + fmt(g) + ' ' + u);
-  return { from: v, to: g, unit: u };
+// окошко-вопрос поверх всего (не закрывает открытое нижнее окно). Возвращает true — «Да, исправить»
+function bigAsk(v, g, unit) {
+  return new Promise(res => {
+    const old = document.getElementById('bigask'); if (old) old.remove();
+    const w = document.createElement('div'); w.id = 'bigask'; w.className = 'bigask-bg';
+    w.innerHTML = `<div class="bigask"><b>Имелось в виду ${esc(fmt(g))} ${esc(unit)}?</b><p class="sub" style="margin:6px 0 0">Вписано ${esc(fmt(v))} ${esc(unit)} — в ${esc(unit)} столько не бывает (больше ${BIG_MAX}). Похоже, это ${/^(кг|kg|килограмм)/i.test(unit) ? 'граммы' : 'миллилитры'}</p>
+      <div class="two" style="margin-top:12px"><button class="btn" data-big="1">Да, ${esc(fmt(g))} ${esc(unit)}</button><button class="btn soft" data-big="0">Нет, оставить</button></div></div>`;
+    document.body.appendChild(w);
+    w.querySelectorAll('[data-big]').forEach(b => b.onclick = e => { e.stopPropagation(); w.remove(); res(b.dataset.big === '1'); });
+  });
 }
-// вышел из поля / нажал «далее» — число поправится само
-document.addEventListener('change', e => { const t = e.target; if (t && t.matches && t.matches('input[inputmode="decimal"]')) autoBig(t); }, true);
-// Страховка на кнопке: то же самое для списка { v, unit, name, inp } (всегда true — вопросов больше нет)
+const bigPend = new WeakMap();   // поле → вопрос, который уже задали (не спрашивать дважды: при уходе из поля и на кнопке)
+function bigBad(inp, v, unit) { if (!inp) return; inp.dataset.bigNo = String(v); const f = inp.closest('.field,.amount') || inp; f.classList.add('bad'); }
+async function askBigInp(inp, unit) {
+  if (bigPend.has(inp)) return bigPend.get(inp);
+  const v = toNum(inp.value); if (v === '' || isNaN(v)) return true;
+  const u = String(unit != null ? unit : unitOfInp(inp)).trim(), g = bigTo(v, u); if (g == null) return true;
+  if (inp.dataset.bigNo === String(v)) return false;   // уже отказались — не спрашиваем снова, ошибка остаётся
+  const p = bigAsk(v, g, u).then(yes => {
+    bigPend.delete(inp);
+    if (yes) { inp.value = fmt(g); delete inp.dataset.bigNo; const f = inp.closest('.field,.amount'); if (f) f.classList.remove('bad'); inp.dispatchEvent(new Event('input', { bubbles: true })); return true; }
+    bigBad(inp, v, u); toast(fmt(v) + ' ' + u + ' — больше ' + BIG_MAX + ' ' + u + ' бот не примет. Исправь число');
+    return false;
+  });
+  bigPend.set(inp, p);
+  return p;
+}
+// вышел из поля / нажал «далее» — спрашиваем (число не меняем без «Да»)
+document.addEventListener('change', e => { const t = e.target; if (t && t.matches && t.matches('input[inputmode="decimal"]')) askBigInp(t); }, true);
+document.addEventListener('input', e => { const t = e.target; if (t && t.dataset && t.dataset.bigNo != null && t.dataset.bigNo !== String(toNum(t.value))) delete t.dataset.bigNo; }, true);
+// Проверка на кнопке для списка { v, unit, name, inp }: true — всё в порядке (что исправили по «Да» — уже в list), false — отказались, отправлять нельзя
 async function fixBig(list) {
-  const done = [];
+  let ok = true;
   for (const it of list) {
     const g = bigTo(it.v, it.unit); if (g == null) continue;
-    done.push(fmt(it.v) + ' → ' + fmt(g) + ' ' + String(it.unit || '').trim());
-    it.v = g;
-    if (it.inp) { it.inp.value = fmt(g); it.inp.dispatchEvent(new Event('input', { bubbles: true })); }
+    let yes;
+    if (it.inp) { yes = await askBigInp(it.inp, it.unit); if (yes) it.v = toNum(it.inp.value); }
+    else { yes = await bigAsk(it.v, g, String(it.unit || '').trim()); if (yes) it.v = g; }
+    if (!yes) ok = false;
   }
-  if (done.length) toast('Поправил: ' + done.join(', '));
-  return true;
+  if (!ok) { haptic('error'); toast('Число больше ' + BIG_MAX + ' — исправь или согласись на исправление'); }
+  return ok;
 }
+// техкарта заготовки: по постоянному id (с 26.11) или по старой привязке — названию (key)
+const tkOf = (cards, ref) => !ref ? null : (cards || []).find(c => c.id === ref) || (cards || []).find(c => c.key === ref) || null;
 
 const ICONS = ['🍯','🍋','🫙','🧴','🍓','🌿','🥛','🍊','🫐','🍵'];
 const icon = name => ICONS[[...String(name)].reduce((a, c) => a + c.charCodeAt(0), 0) % ICONS.length];

@@ -1,6 +1,8 @@
 // Файл «js/04_close.js»: закрытие смены: остатки по датам, черновик, фото, история закрытий, передача склада
 // ===== Закрытие: остатки строками «сколько + дата с наклейки» (плюсик — ещё дата), у замораживаемых — ещё морозилка =====
 const tashDay = () => new Date(Date.now() + 5 * 36e5).toISOString().slice(0, 10);
+// на закрытии: все действующие заготовки + архивные, у которых в учёте ещё есть партии
+function closePreps() { return me.preps.filter(p => !p.arch || ((me.cb || {})[p.id] || []).length || ((me.cbf || {})[p.id] || []).length); }
 function closeRows(p) {   // черновик, иначе даты партий в холодильнике, иначе одна пустая строка
   const dr = draft['r:' + p.id];
   if (Array.isArray(dr) && dr.length) return dr;
@@ -75,11 +77,12 @@ async function openClosing(x) {
 
 
 const DRAFT_KEY = 'rassvet_close_draft';
+const workDay = t => new Date((t || Date.now()) + 5 * 36e5 - 6 * 36e5).toISOString().slice(0, 10);   // рабочий день: Ташкент минус 6 часов (закрытие в 00:40 — ещё вчерашняя смена)
 let draftTimer = null;
 function saveDraft() {
   clearTimeout(draftTimer);
   draftTimer = setTimeout(() => {
-    const data = { ts: Date.now(), checks: [...checks], draft, photos: photos.filter(p => p.id).map(p => ({ id: p.id, src: p.src })) };
+    const data = { ts: Date.now(), who: me && me.name, day: workDay(), checks: [...checks], draft, photos: photos.filter(p => p.id).map(p => ({ id: p.id, src: p.src })) };
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(data)); }
     catch (e) { try { data.photos = data.photos.map(p => ({ id: p.id, src: '' })); localStorage.setItem(DRAFT_KEY, JSON.stringify(data)); } catch (e2) {} }
   }, 300);
@@ -87,7 +90,9 @@ function saveDraft() {
 function loadDraft() {
   try {
     const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
-    if (!d || Date.now() - d.ts > 10 * 3600e3) return false;
+    if (!d) return false;
+    if (d.who != null || d.day) { if (d.who !== (me && me.name) || d.day !== workDay()) return false; }   // чужой черновик или прошлая смена — не подставляем
+    else if (Date.now() - d.ts > 10 * 3600e3) return false;   // старый черновик (до 26.11) — как раньше, 10 часов
     (d.checks || []).forEach(k => checks.add(k));
     Object.assign(draft, d.draft || {});
     photos = (d.photos || []).map(p => ({ id: p.id, src: p.src || LOGO }));
@@ -138,10 +143,11 @@ Object.assign(views, {
     }
     if (!me.preps.length) return empty('🫙', 'Заготовок пока нет', me.isAdmin ? 'Добавь их во вкладке «Заготовки».' : 'Администратор ещё не добавил список.');
     // каждая заготовка: строки «остаток + дата» (плюсик — ещё дата), сверху сумма по холодильнику; у замораживаемых — ещё морозилка
-    const rows = me.preps.map(p => {
+    const rows = closePreps().map(p => {
       const v = closeSum(closeRows(p)), low = v !== '' && toNum(v) < p.min;
       return `<div class="pblock"><div class="prow ${low ? 'low' : ''}" data-min="${p.min}">
         <div class="pname"><b>${esc(p.name)}<span class="tag">варить</span></b><span>минимум ${fmt(p.min)} ${esc(p.unit)}${p.frz ? ' · сумма — без морозилки' : ''}</span></div>
+        <button class="emptybtn" data-empty="${esc(p.id)}" aria-label="Пусто">Пусто</button>
         <label class="field"><input inputmode="decimal" data-id="${esc(p.id)}" value="${esc(v)}" placeholder="сумма" readonly tabindex="-1"><small>${esc(p.unit)}</small></label>
       </div><div class="bsub" data-rp="${esc(p.id)}">${closeRowsHtml(p)}</div></div>`;
     }).join('');
@@ -245,6 +251,10 @@ Object.assign(binds, {
         else if (b.dataset.rdel != null) { rows.splice(+b.closest('.brow').dataset.ri, 1); redraw(pid, rows.length ? rows : [{ q: '', d: '' }]); }
       });
     });
+    // «Пусто»: холодильник 0 и сразу к следующей незаполненной заготовке
+    const goNext = pid => { const i = inputs.findIndex(x => x.dataset.id === pid), nx = inputs.slice(i + 1).concat(inputs.slice(0, i)).find(x => x.value.trim() === '');
+      if (!nx) { toast('Все остатки заполнены 👍'); return; } const f = boxOf(nx.dataset.id).querySelector('[data-rq]'); nx.closest('.pblock').scrollIntoView({ behavior: 'smooth', block: 'center' }); if (f) setTimeout(() => f.focus(), 250); };
+    document.querySelectorAll('[data-empty]').forEach(b => b.onclick = () => { const pid = b.dataset.empty; redraw(pid, [{ q: '0', d: '' }]); try { tg.HapticFeedback.selectionChanged(); } catch (e) {} goNext(pid); });
     inputs.forEach(i => i.onclick = () => { const box = boxOf(i.dataset.id); if (!box) return; const f = [...box.querySelectorAll('[data-rq]')].find(x => x.value.trim() === '') || box.querySelector('[data-rq]'); if (f) f.focus(); });
     const cashIn = [...document.querySelectorAll('input[data-cash]')], cashVal = k => { const i = cashIn.find(x => x.dataset.cash === k); return i ? parseMoney(i.value) : NaN; };
     // подсказка: что уже записано из кассы через «Наличные» (бот вычтет это из остатка iiko)
@@ -357,12 +367,14 @@ Object.assign(binds, {
       // строки по датам и морозилка: сначала поправим 1600 → 1,6, потом проверим числа и даты
       const qIn = [...document.querySelectorAll('input[data-rq], input[data-fq]')];
       const pOf = x => me.preps.find(y => y.id === (x.dataset.rq || x.dataset.fq)) || {};
-      await fixBig(qIn.filter(x => toNum(x.value) !== '' && !isNaN(toNum(x.value))).map(x => { const p = pOf(x); return { v: toNum(x.value), unit: p.unit, name: p.name, inp: x }; }));
+      if (!(await fixBig(qIn.filter(x => toNum(x.value) !== '' && !isNaN(toNum(x.value))).map(x => { const p = pOf(x); return { v: toNum(x.value), unit: p.unit, name: p.name, inp: x }; })))) { const b = qIn.find(x => x.dataset.bigNo != null); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
       const badQ = qIn.filter(x => { const v = toNum(x.value); return v !== '' && (isNaN(v) || v < 0); });
       if (badQ.length) { badQ.forEach(x => x.parentNode.classList.add('bad')); badQ[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); toast('Проверь числа — есть ошибка'); haptic('error'); return; }
       // остаток больше нуля — нужна дата с наклейки, и не из будущего
       const td = tashDay(), badD = [...document.querySelectorAll('.brow[data-ri]')].map(r => r.querySelector('[data-rd]')).concat([...document.querySelectorAll('.brow[data-fi]')].map(r => r.querySelector('[data-fd]'))).filter(d => { const q = toNum(d.closest('.brow').querySelector('[data-rq], [data-fq]').value); return (q !== '' && q > 0 && !d.value) || (d.value && d.value > td); });
       if (badD.length) { badD.forEach(d => d.classList.add('bad')); badD[0].scrollIntoView({ behavior: 'smooth', block: 'center' }); toast(badD[0].value ? 'Дата на наклейке не может быть из будущего' : 'Укажи дату с наклейки у каждого остатка'); haptic('error'); return; }
+      // перед отправкой: что не заполнено и где подсчёт расходится с партиями в учёте — можно перейти к строке и сверить
+      if (!(await closeReview(inputs, readRows, boxOf))) return;
       const values = {}, rq = {}, fq = {};
       me.preps.forEach(p => {
         const box = boxOf(p.id); if (!box) return;
@@ -465,3 +477,48 @@ function bindSk() {
   };
 }
 
+
+// ===== Проверка перед закрытием (с 26.11): незаполненные позиции и расхождения с партиями, которые видно уже по введённому =====
+function closeIssues(inputs, readRows) {
+  const out = [], dd = d => d ? d.slice(8, 10) + '.' + d.slice(5, 7) : '';
+  closePreps().forEach(p => {
+    const inp = inputs.find(x => x.dataset.id === p.id); if (!inp) return;
+    if (inp.value.trim() === '') { out.push({ pid: p.id, kind: 'empty', t: `<b>${esc(p.name)}</b> — остаток не вписан` }); return; }
+    const rows = readRows(p.id).filter(r => String(r.q).trim() !== '' || r.d), cb = (me.cb || {})[p.id] || [], tol = /^(мл|ml|г|гр|g)/i.test(p.unit || '') ? 20 : 0.02;
+    const want = {}; rows.forEach(r => { const q = toNum(r.q); if (r.d && q > 0) want[r.d] = (want[r.d] || 0) + q; });
+    const have = {}; cb.forEach(x => { have[x.day] = (have[x.day] || 0) + x.q; });
+    Object.keys(want).forEach(d => {
+      if (have[d] == null) out.push({ pid: p.id, kind: 'new', d, t: `<b>${esc(p.name)}</b>: партии от ${dd(d)} в учёте нет — заведём по наклейке (${fmt(want[d])} ${esc(p.unit)})` });
+      else if (want[d] > have[d] + tol) out.push({ pid: p.id, kind: 'more', d, t: `<b>${esc(p.name)}</b> от ${dd(d)}: посчитали ${fmt(want[d])}, в учёте ${fmt(have[d])} ${esc(p.unit)} — больше, чем было` });
+    });
+    Object.keys(have).forEach(d => { if (want[d] == null && have[d] > tol && toNum(inp.value) > 0) out.push({ pid: p.id, kind: 'gone', d, t: `<b>${esc(p.name)}</b>: партия от ${dd(d)} (${fmt(have[d])} ${esc(p.unit)}) не вписана — будет считаться закончившейся` }); });
+  });
+  return out;
+}
+function closeReview(inputs, readRows, boxOf) {
+  const list = closeIssues(inputs, readRows);
+  if (!list.length) return Promise.resolve(true);
+  const empty = list.filter(x => x.kind === 'empty'), canGo = !empty.length || me.isAdmin;
+  return new Promise(res => {
+    closeSheet();
+    const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+    wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>🔎 Проверь перед закрытием</h2>
+      ${empty.length ? `<h3>Не заполнено (${empty.length})</h3>` + empty.map(x => `<div class="revrow"><div class="grow">${x.t}</div><button class="tkbtn" data-go="${esc(x.pid)}">Перейти</button></div>`).join('') : ''}
+      ${list.length > empty.length ? `<h3>Расходится с партиями в учёте</h3><p class="sub" style="margin-top:0">Если всё так и есть — можно закрывать, бот поправит партии по подсчёту</p>` + list.filter(x => x.kind !== 'empty').map(x => `<div class="revrow"><div class="grow">${x.t}</div><button class="tkbtn" data-go="${esc(x.pid)}" data-d="${esc(x.d || '')}">Сверить</button></div>`).join('') : ''}
+      ${canGo ? `<button class="btn" id="rvOk">${empty.length ? 'Закрыть всё равно (админ)' : '✅ Всё верно — закрыть смену'}</button>` : '<p class="sub">Сначала впиши остатки — потом смену можно закрыть</p>'}
+      <button class="btn soft" id="rvNo">Вернуться к подсчёту</button></div>`;
+    document.body.appendChild(wrap);
+    const done = v => { closeSheet(); res(v); };
+    wrap.onclick = e => { if (e.target === wrap) done(false); };
+    wrap.querySelector('#rvNo').onclick = () => done(false);
+    const ok = wrap.querySelector('#rvOk'); if (ok) ok.onclick = () => done(true);
+    wrap.querySelectorAll('[data-go]').forEach(b => b.onclick = () => {
+      done(false);
+      const box = boxOf(b.dataset.go); if (!box) return;
+      const row = b.dataset.d ? [...box.querySelectorAll('.brow[data-ri]')].find(r => r.querySelector('[data-rd]').value === b.dataset.d) : null;
+      const f = row ? row.querySelector('[data-rq]') : box.querySelector('[data-rq]');
+      box.closest('.pblock').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (f) { setTimeout(() => { f.focus(); (f.closest('.field') || f).classList.add('bad'); }, 300); }
+    });
+  });
+}

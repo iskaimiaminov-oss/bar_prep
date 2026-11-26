@@ -22,7 +22,7 @@ const hmS = m => Math.floor(m / 60) % 24 + ':' + String(m % 60).padStart(2, '0')
 function homeExtraHtml(d) {
   let out = '';
   const today = me.today.date;
-  out += skCard() + guCard();
+  out += skCard() + guCard() + ordersCard(d.orders);
   // мои смены на 7 дней (у владельца бота скрыто — мешает)
   if (d.week && d.week.length && !me.isAdmin) {
     const mySwap = date => (d.swaps || []).find(w => w.mine && w.date === date);
@@ -108,7 +108,7 @@ function bindHomeExtra() {
     });
     const pb = document.getElementById('probBtn'); if (pb) pb.onclick = () => openProblem(() => getHome(true).then(fill));
     const db = document.getElementById('dishBtn'); if (db) db.onclick = openDish;
-    bindGu(); bindSk();
+    bindGu(); bindSk(); bindOrders(() => fill(homeData));
   };
   if (homeData) fill(homeData); else box.innerHTML = card('<div class="wip">Загружаю…</div>');
   getHome(!!homeData && Date.now() - homeAt > 60e3).then(fill).catch(() => {});
@@ -259,11 +259,16 @@ Object.assign(views, {
     const t = me.today, made = t.made || {}, ylds = t.yields || {};
     const hasTk = pid => { const p = me.preps.find(x => x.id === pid); return p && p.tk; };
     let out = shiftCard() + '<div id="homeExtra"></div>';
+    // остаток по учёту: из вечернего подсчёта (минус выдачи точкам после него) — с временем подсчёта; нет подсчёта — «Остаток неизвестен»
+    const stockTxt = (v, unit, low) => !me.last || v == null || v === '' ? '<b>Остаток неизвестен</b>' : `остаток по учёту ${fmt(v)} ${esc(unit)}${low ? ' — почти пусто' : ''} <i>(подсчёт ${esc(me.last.by || '')}, ${esc(fmtTs(me.last.ts))})</i>`;
     const ro = false;   // админы-наблюдатели отмечают заготовки, как все
     const thawed = t.thawed || {};
     const yEdit = t.yEdit || {};
     // сваренное: можно исправить выход, если ошиблись при отметке (кроме разморозки)
-    const madeRow = i => `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>${thawed[i.pid] ? '❄️ разморозил(а)' : 'сварил(а)'} ${esc(made[i.pid])}${ylds[i.pid] != null ? ' · ' + (thawed[i.pid] ? '' : 'выход ') + fmt(ylds[i.pid]) + ' ' + esc(i.unit) : ''}${yEdit[i.pid] ? ' · исправил(а) ' + esc(yEdit[i.pid]) : ''}</span></div>${!ro && !thawed[i.pid] && ylds[i.pid] != null ? `<button class="tkbtn" data-yedit="${esc(i.pid)}">✏️ Выход</button>` : ''}${!ro ? `<button class="tkbtn" data-undo="${esc(i.pid)}" style="margin-left:6px" aria-label="Удалить отметку">🗑</button>` : ''}</div>`;
+    // справка после записи: по плану · получилось · разница. Только показ — статус и план не меняет
+    const pl = t.pl || {}, diffTxt = i => { const p = pl[i.pid], y = ylds[i.pid]; if (thawed[i.pid] || !(p > 0) || y == null) return ''; const d = Math.round((y - p) * 100) / 100;
+      return `<span class="ydiff">По плану ${fmt(p)} ${esc(i.unit)} · получилось ${fmt(y)} ${esc(i.unit)} · ${d === 0 ? 'как в плане' : 'на ' + fmt(Math.abs(d)) + ' ' + esc(i.unit) + (d < 0 ? ' меньше' : ' больше') + ' плана'}</span>`; };
+    const madeRow = i => `<div class="check made"><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>${thawed[i.pid] ? '❄️ разморозил(а)' : 'сварил(а)'} ${esc(made[i.pid])}${ylds[i.pid] != null ? ' · ' + (thawed[i.pid] ? '' : 'выход ') + fmt(ylds[i.pid]) + ' ' + esc(i.unit) : ''}${yEdit[i.pid] ? ' · исправил(а) ' + esc(yEdit[i.pid]) : ''}</span>${diffTxt(i)}</div>${!ro && !thawed[i.pid] && ylds[i.pid] != null ? `<button class="tkbtn" data-yedit="${esc(i.pid)}">✏️ Выход</button>` : ''}${!ro ? `<button class="tkbtn" data-undo="${esc(i.pid)}" style="margin-left:6px" aria-label="Удалить отметку">🗑</button>` : ''}</div>`;
     // заготовки, которые замораживают: при отметке — сколько из сваренного ушло в морозилку
     const isFrz = pid => { const p = me.preps.find(x => x.id === pid); return p && p.frz; };
     const fzField = (pid, unit) => isFrz(pid) ? `<label class="yld"><em>❄️ Из них в морозилку</em><span class="field"><input data-fz="${esc(pid)}" inputmode="decimal" placeholder="0" value="${esc(fzv[pid] != null ? fzv[pid] : '')}"><small>${esc(unit)}</small></span></label>` : '';
@@ -271,8 +276,9 @@ Object.assign(views, {
       // у выбранной заготовки — поле «Итоговый выход» (сразу стоит план, поправить, если вышло иначе)
       const rows = ro ? t.items.map(i => made[i.pid] ? madeRow(i) : needRow(i)).join('') : t.items.map(i => made[i.pid]
         ? madeRow(i)
-        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" ${ro ? 'style="cursor:default"' : `data-pid="${esc(i.pid)}"`}><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>${i.frz ? `❄️ в морозилке ${fmt(i.frozen)} ${esc(i.unit)} · держим минимум ${fmt(i.norm)}` : `осталось ${i.left > 0 ? fmt(i.left) + ' ' + esc(i.unit) + ' — почти пусто' : fmt(i.have) + ' ' + esc(i.unit)} · норма ${fmt(i.norm)}`}</span>
-            <label class="yld"><em>Итоговый выход</em><span class="field"><input data-y="${esc(i.pid)}" inputmode="decimal" enterkeyhint="done" value="${esc(yv[i.pid] != null ? yv[i.pid] : fmt(i.need))}"><small>${esc(i.unit)}</small></span></label>${fzField(i.pid, i.unit)}</div><div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div>${hasTk(i.pid) ? `<button class="tkbtn" data-tk="${esc(i.pid)}" data-amt="${i.need}">ТК</button>` : ''}</div>`).join('');
+        : `<div class="check ${sel.has(i.pid) ? 'on' : ''}" ${ro ? 'style="cursor:default"' : `data-pid="${esc(i.pid)}"`}><div class="box">✓</div><div class="pname"><b>${esc(i.name)}</b><span>${i.frz ? `❄️ в морозилке ${fmt(i.frozen)} ${esc(i.unit)} · держим минимум ${fmt(i.norm)}` : stockTxt(i.left > 0 ? i.left : i.have, i.unit, i.left > 0) + ' · норма ' + fmt(i.norm)}</span>
+            <span>📋 По плану: <b>+${fmt(i.need)} ${esc(i.unit)}</b></span>
+            <label class="yld"><em>Сколько получилось</em><span class="field"><input data-y="${esc(i.pid)}" inputmode="decimal" enterkeyhint="done" placeholder="факт" value="${esc(yv[i.pid] != null ? yv[i.pid] : '')}"><small>${esc(i.unit)}</small></span></label>${fzField(i.pid, i.unit)}</div>${hasTk(i.pid) ? `<button class="tkbtn" data-tk="${esc(i.pid)}" data-amt="${i.need}">📖 Рецепт</button>` : `<div class="pill">+${fmt(i.need)} ${esc(i.unit)}</div>`}</div>`).join('');
       const allDone = t.items.every(i => made[i.pid]);
       out += card(`<h2>Сварить сегодня</h2><p class="sub">${allDone ? 'Всё готово — спасибо! 🎉' : ro ? 'Что нужно сварить по последнему подсчёту' : 'Отметь, что сварил(а)'}</p>${rows}`);
     } else if (t.done && t.done.none) {
@@ -283,14 +289,14 @@ Object.assign(views, {
     if (ro) return out;
     // «Сварил что-то ещё» — заготовки не из списка (по подсчёту не требовались, но их сварили)
     const inList = {}; t.items.forEach(i => inList[i.pid] = 1);
-    const extras = me.preps.filter(p => !inList[p.id]).map(p => ({ pid: p.id, name: p.name, unit: p.unit || '' }));
+    const extras = me.preps.filter(p => !inList[p.id] && !p.arch).map(p => ({ pid: p.id, name: p.name, unit: p.unit || '' }));
     const lastV = (me.last && me.last.values) || {};
     if (extras.length) {
       const open = extraOpen != null ? extraOpen : (!t.items.length || extras.some(x => sel.has(x.pid) || made[x.pid]));
       const madeCnt = extras.filter(x => made[x.pid]).length;
       const rowsX = extras.map(x => made[x.pid] ? madeRow(x)
-        : `<div class="check ${sel.has(x.pid) ? 'on' : ''}" data-pid="${esc(x.pid)}"><div class="box">✓</div><div class="pname"><b>${esc(x.name)}</b><span>${lastV[x.pid] != null ? 'по подсчёту осталось ' + fmt(lastV[x.pid]) + ' ' + esc(x.unit) : 'не было в списке'}</span>
-            <label class="yld"><em>Итоговый выход</em><span class="field"><input data-y="${esc(x.pid)}" inputmode="decimal" enterkeyhint="done" placeholder="0" value="${esc(yv[x.pid] != null ? yv[x.pid] : '')}"><small>${esc(x.unit)}</small></span></label>${fzField(x.pid, x.unit)}</div></div>`).join('');
+        : `<div class="check ${sel.has(x.pid) ? 'on' : ''}" data-pid="${esc(x.pid)}"><div class="box">✓</div><div class="pname"><b>${esc(x.name)}</b><span>${stockTxt(lastV[x.pid], x.unit)} · по плану не нужно</span>
+            <label class="yld"><em>Итоговый выход</em><span class="field"><input data-y="${esc(x.pid)}" inputmode="decimal" enterkeyhint="done" placeholder="факт" value="${esc(yv[x.pid] != null ? yv[x.pid] : '')}"><small>${esc(x.unit)}</small></span></label>${fzField(x.pid, x.unit)}</div>${hasTk(x.pid) ? `<button class="tkbtn" data-tk="${esc(x.pid)}" data-amt="">📖 Рецепт</button>` : ''}</div>`).join('');
       out += `<details class="card" id="extraBox" ${open ? 'open' : ''}><summary><div class="pname"><h2>${t.items.length ? 'Сварил что-то ещё?' : 'Сварил заготовку?'}</h2>
         <p class="sub">${madeCnt ? 'Отмечено сверх списка: ' + madeCnt : 'Отметь, если сварил(а) то, чего не было в списке'}</p></div></summary>${rowsX}</details>`;
     }
@@ -308,7 +314,7 @@ Object.assign(binds, {
   today() {
     bindShift();
     bindHomeExtra();
-    document.querySelectorAll('[data-tk]').forEach(b => b.onclick = e => { e.stopPropagation(); openTkForPrep(b.dataset.tk, toNum(b.dataset.amt)); });
+    document.querySelectorAll('[data-tk]').forEach(b => b.onclick = e => { e.stopPropagation(); const a = toNum(b.dataset.amt); openTkForPrep(b.dataset.tk, a === '' ? null : a, a === '' ? null : a); });   // рецепт сразу на объём плана, план — отдельной строкой
     // «❄️ Разморозил» — вместо варки достали из морозилки (сразу отмечается как сделанное)
     document.querySelectorAll('[data-thaw]').forEach(b => b.onclick = async e => {
       e.stopPropagation();
@@ -351,7 +357,7 @@ Object.assign(binds, {
       if (dock) dock.classList.toggle('hide', !pending && !sel.size);
     };
     document.querySelectorAll('[data-pid]').forEach(el => el.onclick = e => {
-      if (e.target.closest('.yld')) return;   // клик по полю выхода не снимает выбор
+      if (e.target.closest('.yld') || e.target.closest('[data-tk]')) return;   // клик по полю выхода не снимает выбор
       const id = el.dataset.pid;
       if (sel.has(id)) sel.delete(id); else sel.add(id);
       el.classList.toggle('on', sel.has(id)); sync();

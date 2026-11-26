@@ -1,11 +1,15 @@
 // Файл «js/06_preps.js»: заготовки и техкарты: список, редактор, окошки «сколько/дата/наклейка», варка задним числом
 // Открыть техкарту. prep — заготовка из приложения (может не быть), amount — сколько сварить
-function openTk(c, prep, amount) {
+// plan — сколько сварить по действующему плану (показываем отдельно; рецепт сразу открывается на этот объём)
+function openTk(c, prep, amount, plan) {
   closeSheet();
+  if (c.err && c.err.length) return openTkErr(c);   // несовместимые единицы — пересчёт не выдаём
   // выход берём из строки «Выход» в техкарте (размер S или первый заполненный)
   const yi = c.yields ? c.yields.findIndex(y => y && y.n > 0) : -1;
-  const yU = yi >= 0 ? (c.yields[yi].u || (prep && prep.unit) || '') : '';
-  const yieldS = yi >= 0 ? c.yields[yi].n / (yi === 0 ? 1 : ((c.ings.find(i => i.amounts[0] && i.amounts[yi]) || { amounts: [1, 1] }).amounts[yi] / (c.ings.find(i => i.amounts[0] && i.amounts[yi]) || { amounts: [1, 1] }).amounts[0])) : 0;
+  let yU = yi >= 0 ? (c.yields[yi].u || (prep && prep.unit) || '') : '';
+  let yieldS = yi >= 0 ? c.yields[yi].n / (yi === 0 ? 1 : ((c.ings.find(i => i.amounts[0] && i.amounts[yi]) || { amounts: [1, 1] }).amounts[yi] / (c.ings.find(i => i.amounts[0] && i.amounts[yi]) || { amounts: [1, 1] }).amounts[0])) : 0;
+  // бот приводит выход к мл/г — показываем в единице заготовки (л, кг), если она того же рода
+  if (yieldS && prep && prep.unit && conv(1, yU, prep.unit) != null) { yieldS = conv(yieldS, yU, prep.unit); yU = prep.unit; }
   const unitP = yU;
   // «сварить +1,6 л» из вкладки «Сегодня» переводим в единицы выхода
   if (amount != null && amount !== '' && yieldS && prep) { const cv = conv(Number(amount), prep.unit, yU); amount = cv != null ? Math.round(cv * 100) / 100 : (UNIT(prep.unit)[0] === UNIT(yU)[0] ? amount : null); }
@@ -15,20 +19,27 @@ function openTk(c, prep, amount) {
   const wrap = document.createElement('div');
   wrap.className = 'sheet-bg'; wrap.id = 'sheet';
 
-  const calc = () => {   // → { vals: [...], factor, limit }
+  // «сколько есть»: пустое поле — остаток неизвестен; явный 0 у ингредиента — сейчас приготовить нельзя
+  const calc = () => {   // → { vals: [...], factor, limit, zero: [k], unknown: [k] }
     if (mode === 'base') return { vals: c.ings.map((i, k) => base[k] ? base[k].v : null), factor: 1 };
-    let factor = null, limit = null;
+    let factor = null, limit = null, zero = [], unknown = [];
     if (mode === 'amount') factor = yieldS && Number(amt) > 0 ? Number(amt) / yieldS : null;
     if (mode === 'have') {
-      Object.keys(have).forEach(k => { const b = base[k]; if (!b || !(have[k] > 0)) return; const f = have[k] / b.v; if (factor == null || f < factor) { factor = f; limit = +k; } });
+      zero = Object.keys(have).filter(k => base[k] && have[k] === 0).map(Number);
+      unknown = c.ings.map((i, k) => k).filter(k => base[k] && have[k] == null);
+      if (zero.length) factor = 0;
+      else Object.keys(have).forEach(k => { const b = base[k]; if (!b || !(have[k] > 0)) return; const f = have[k] / b.v; if (factor == null || f < factor) { factor = f; limit = +k; } });
     }
-    return { vals: c.ings.map((i, k) => factor == null || !base[k] ? null : base[k].v * factor), factor: factor, limit: limit };
+    return { vals: c.ings.map((i, k) => factor == null || !base[k] ? null : base[k].v * factor), factor: factor, limit: limit, zero: zero, unknown: unknown };
   };
   const info = r => {
     if (mode === 'have') {
+      if (r.zero.length) return '⛔ <b>Сейчас приготовить нельзя</b> — нет: ' + r.zero.map(k => '<b>' + esc(c.ings[k].name) + '</b>').join(', ');
       if (r.factor == null) return 'Впиши, сколько есть хотя бы одного ингредиента';
       const lim = Object.keys(have).length > 1 && r.limit != null ? 'Ограничивает: <b>' + esc(c.ings[r.limit].name) + '</b><br>' : '';
-      return lim + (yieldS ? 'Получится ≈ <b>' + q(r.factor * yieldS) + ' ' + esc(unitP) + '</b> (' + q(r.factor) + ' × техкарта)' : '≈ ' + q(r.factor) + ' × техкарта');
+      const res = yieldS ? '≈ <b>' + q(r.factor * yieldS) + ' ' + esc(unitP) + '</b> (' + q(r.factor) + ' × техкарта)' : '≈ ' + q(r.factor) + ' × техкарта';
+      if (r.unknown.length) return lim + '⚠️ <b>Предварительно</b>: получится ' + res + ' — если остальных ингредиентов хватит. Остаток неизвестен: ' + r.unknown.map(k => esc(c.ings[k].name)).join(', ');
+      return lim + 'Получится ' + res;
     }
     if (mode === 'amount') return r.factor ? '≈ ' + q(r.factor) + ' × техкарта' : 'Впиши, сколько нужно';
     return 'Количество по техкарте';
@@ -40,6 +51,7 @@ function openTk(c, prep, amount) {
       const own = mode === 'have' && have[k] != null;
       inp.closest('.ing').classList.toggle('own', own);
       inp.closest('.ing').classList.toggle('limit', mode === 'have' && r.limit === k && Object.keys(have).length > 1);
+      inp.closest('.ing').classList.toggle('zero', mode === 'have' && (r.zero || []).indexOf(k) >= 0);
       if (inp === skip || own) return;
       inp.value = r.vals[k] == null ? '' : q(r.vals[k]).replace(',', '.');
     });
@@ -48,9 +60,10 @@ function openTk(c, prep, amount) {
     const reset = wrap.querySelector('#tkreset'); if (reset) reset.style.display = mode === 'have' ? '' : 'none';
   };
 
-  const top = yieldS
+  const planHtml = plan != null && plan !== '' && prep ? `<div class="tkplan"><span>📋 По плану</span><b>${esc(fmt(plan))} ${esc(prep.unit || '')}</b></div>` : '';
+  const top = planHtml + (yieldS
     ? `<div class="amount"><span>Сколько сварить</span><input id="amt" inputmode="decimal" value="${esc(amt)}"><b>${esc(unitP)}</b></div>`
-    : `<div class="amount" style="background:var(--olive-soft);color:var(--forest)"><span>Пересчёт по объёму появится, когда в техкарте будет указан выход</span></div>`;
+    : `<div class="amount" style="background:var(--olive-soft);color:var(--forest)"><span>Пересчёт по объёму появится, когда в техкарте будет указан выход</span></div>`);
   const rows = c.ings.map((i, k) => `<div class="ing"><span>${esc(i.name)}</span>
       <label class="field"><input data-ing="${k}" inputmode="decimal" ${base[k] ? '' : 'disabled'}><small>${esc(i.unit)}</small></label></div>`).join('');
   wrap.innerHTML = `<div class="sheet"><div class="grab"></div>
@@ -84,10 +97,22 @@ function openTk(c, prep, amount) {
   update();
 }
 
-async function openTkForPrep(pid, amount) {
+// Техкарта с несовместимыми единицами: показываем, что не так, и количества как в таблице — без пересчёта
+function openTkErr(c) {
+  const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
+  wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>${esc(c.title)}</h2>
+    <div class="tkerr">⚠️ <b>Ошибка в техкарте — пересчёт выключен</b><br>${c.err.map(esc).join('<br>')}<br><span style="color:var(--forest)">Исправь единицы в таблице техкарт (например, везде «мл» или везде «л»), потом «🔄 Обновить из таблицы».</span></div>
+    <div class="card" style="padding:6px 14px">${c.ings.map(i => `<div class="hrow"><span>${esc(i.name)}</span><b>${i.raw ? esc(i.raw.filter(Boolean).join(' / ')) : (i.amounts || []).filter(x => x != null).map(x => esc(fmt(x)) + ' ' + esc(i.unit)).join(' / ')}</b></div>`).join('')}</div>
+    ${c.method ? `<h3>Приготовление</h3><div class="card method">${esc(c.method)}</div>` : ''}
+    <button class="btn soft" id="closeSheet">Закрыть</button></div>`;
+  wrap.querySelector('#closeSheet').onclick = closeSheet;
+  wrap.onclick = e => { if (e.target === wrap) closeSheet(); };
+  document.body.appendChild(wrap);
+}
+async function openTkForPrep(pid, amount, plan) {
   const p = me.preps.find(x => x.id === pid);
   if (!p || !p.tk) return toast('Для этой заготовки техкарта не привязана');
-  try { const c = (await getTk()).find(x => x.id === p.tk); if (!c) return toast('Техкарта не найдена в таблице'); openTk(c, p, amount); }
+  try { const c = tkOf(await getTk(), p.tk); if (!c) return toast('Техкарта не найдена в таблице — админ выберет её в «Заготовках»'); openTk(c, p, amount, plan); }
   catch (e) { toast(e.message); }
 }
 
@@ -109,6 +134,12 @@ function askDate(title, sub, max, okText) {
     wrap.querySelector('#askOk').onclick = () => { if (!inp.value) { toast('Выбери дату с наклейки'); return; } if (inp.value > max) { toast('Дата не может быть из будущего'); return; } done(inp.value); };
   });
 }
+// Текст наклейки (с 26.11): действие (Сварено / Заморожено / Разморожено), дата, время — если известно, № партии и срок — из сохранённых данных
+function labelTxt(x) {
+  const d = ts => new Date(ts).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }), t = ts => new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const act = x.state === 'f' ? 'Заморожено' : x.thaw ? 'Разморожено' : 'Сварено';
+  return `${act}: ${esc(d(x.made))}${x.late ? '' : ' в ' + esc(t(x.made))} · партия № ${esc(String(x.id).toUpperCase())}${x.exp ? ' · годна до ' + esc(d(x.exp)) : ' · срок не указан'}`;
+}
 // Только что сварили / разморозили / убрали в морозилку: что написать на наклейке и кнопка «Промаркировал(а)»
 function askLabel(list) {
   if (!list || !list.length) return Promise.resolve();
@@ -117,7 +148,7 @@ function askLabel(list) {
     closeSheet();
     const wrap = document.createElement('div'); wrap.className = 'sheet-bg'; wrap.id = 'sheet';
     wrap.innerHTML = `<div class="sheet"><div class="grab"></div><h2>🏷 Промаркируй заготовку</h2><p class="sub" style="margin-top:4px">Напиши на наклейке и приклей на тару:</p>
-      ${list.map(x => `<div class="batch"><div class="pname"><b>${esc(x.name)}${x.state === 'f' ? ' ❄️' : ''}</b><span>${x.state === 'f' ? 'В морозилку' : 'Сварено'}: ${esc(dd(x.made))}${x.exp ? ' · годна до ' + esc(dd(x.exp)) : ''}</span></div></div>`).join('')}
+      ${list.map(x => `<div class="batch"><div class="pname"><b>${esc(x.name)}${x.state === 'f' ? ' ❄️' : ''}</b><span>${labelTxt(x)}</span></div></div>`).join('')}
       <button class="btn" id="lbOk">✅ Промаркировал(а)</button><button class="btn soft" id="lbNo">Позже</button></div>`;
     document.body.appendChild(wrap);
     const done = () => { closeSheet(); res(); };
@@ -186,7 +217,7 @@ function askLate() {
     const it = { v: toNum($('#lq').value), unit: p.unit, inp: $('#lq') };
     if (it.v === '' || !(it.v > 0)) { toast('Впиши итоговый выход'); $('#lq').focus(); return; }
     const fv = p.frz ? toNum($('#lf').value) : '', ft = { v: fv === '' ? 0 : fv, unit: p.unit, inp: fv === '' ? null : $('#lf') };
-    await fixBig([it, ft]);
+    if (!(await fixBig([it, ft]))) return;
     if (isNaN(ft.v) || ft.v < 0 || ft.v > it.v) { toast('В морозилку — не больше, чем сварено'); return; }
     const b = $('#lOk'); b.disabled = true; b.textContent = 'Вношу…';
     try { const r = await call('madeLate', { pid: p.id, day, q: it.v, f: ft.v, _back: ['me', 'fridge'] }); closeSheet(); fridgeData = r._fridge || null; haptic('success'); toast('Внесено за ' + day.slice(8, 10) + '.' + day.slice(5, 7) + ' ✅'); me = r._me || await call('me'); render(); askLabel(r && r.label); }
@@ -196,7 +227,7 @@ function askLate() {
 
 
 // Срок хранения из техкарты в днях («7 суток» → 7) — подсказка в редакторе заготовок
-function tkShelf(cards, tk) { const c = (cards || []).find(x => x.id === tk), m = c && String(c.shelf || '').match(/(\d+)\s*(сут|дн|день|дней)/i); return m ? m[1] : ''; }
+function tkShelf(cards, tk) { const c = tkOf(cards, tk), m = c && String(c.shelf || '').match(/(\d+)\s*(сут|дн|день|дней)/i); return m ? m[1] : ''; }
 
 function needRow(i) {
   return `<div class="need"><div class="dot">${esc(String(i.name).trim()[0] || '•').toUpperCase()}</div>
@@ -213,7 +244,7 @@ Object.assign(views, {
     if (!all.length) return empty('📖', 'Техкарт не найдено', 'Бот читает лист «Заготовки» в таблице техкарт.');
     const row = (c, isHidden) => `<div class="tkrow" ${isHidden ? '' : `data-card="${esc(c.id)}"`} style="${isHidden ? 'opacity:.6;cursor:default' : ''}">
       <div style="width:40px;height:40px;border-radius:50%;background:var(--olive);color:var(--cream);display:grid;place-items:center;font-weight:600;flex:0 0 auto">${esc(c.title[0] || '•').toUpperCase()}</div>
-      <div class="pname"><b>${esc(c.title)}</b><span>${c.yields && c.yields.find(y => y && y.n) ? 'выход ' + q(c.yields.find(y => y && y.n).n) + ' ' + esc(c.yields.find(y => y && y.n).u) : 'выход не указан'}${c.shelf ? ' · хранится ' + esc(c.shelf) : ''}</span></div>
+      <div class="pname"><b>${esc(c.title)}${c.err ? ' <span class="tag-late">⚠️ единицы</span>' : ''}</b><span>${c.yields && c.yields.find(y => y && y.n) ? 'выход ' + q(c.yields.find(y => y && y.n).n) + ' ' + esc(c.yields.find(y => y && y.n).u) : 'выход не указан'}${c.shelf ? ' · хранится ' + esc(c.shelf) : ''}</span></div>
       ${me.isAdmin ? `<button class="tkbtn" data-hide="${esc(c.id)}" data-val="${isHidden ? 0 : 1}">${isHidden ? 'Вернуть' : 'Убрать'}</button>` : `<span style="color:var(--muted);font-size:20px">›</span>`}</div>`;
     let out = card(`<h2>Техкарты заготовок</h2><p class="sub">Нажми, чтобы открыть рецепт и пересчитать количество${me.isAdmin ? '. «Убрать» — скрыть у команды, таблица не меняется' : ''}</p>` +
       (me.isAdmin ? `<button class="btn soft" id="tkRefresh" style="margin:0 0 6px;padding:11px">🔄 Обновить из таблицы</button>` : '') +
@@ -224,6 +255,11 @@ Object.assign(views, {
 
 });
 
+// «Заготовки» (с 26.11): поиск и фильтры, единица из списка, минимум ≤ норма, предпросмотр на дату, архив вместо удаления.
+// Чек-лист закрытия переехал в «Управление» → «🌙 Закрытие»
+const PREP_UNITS = ['л', 'мл', 'кг', 'г', 'шт', 'порц'];
+let prQ = '', prF = '', prPv = {};   // поиск, фильтр (notk | noshelf | arch), предпросмотр по заготовке { date, have, t }
+const unitCompat = (a, b) => { const x = UNIT(a), y = UNIT(b); return x[0] === y[0] && /^(v|m)$/.test(x[0]) ? x[1] / y[1] : null; };
 Object.assign(views, {
   async preps() {
     await getCfg();
@@ -231,21 +267,30 @@ Object.assign(views, {
     try { cards = await getTk(); } catch (e) {}
     const stem = w => norm2(w).slice(0, 4);
     const guess = name => { const ws = norm2(name).split(' ').filter(w => w.length > 3).map(stem); const c = cards.filter(c => !c.hidden).find(c => norm2(c.title).split(' ').some(w => ws.indexOf(stem(w)) >= 0)); return c ? c.id : ''; };
-    cfg.preps.forEach(p => { if (p.tk == null || p.tk === undefined) p.tk = guess(p.name); });
-    const rows = cfg.preps.map((p, i) => `
+    cfg.preps.forEach(p => { if (p.tk == null || p.tk === undefined) p.tk = guess(p.name); if (p._u0 == null) p._u0 = p.unit || ''; });
+    const noTk = p => !p.tk || !tkOf(cards, p.tk), noShelf = p => !(Number(p.shelf) > 0) && !tkShelf(cards, p.tk);
+    const match = p => (!prQ || norm2(p.name).indexOf(norm2(prQ)) >= 0) && (prF === 'arch' ? p.arch : !p.arch) && (prF !== 'notk' || noTk(p)) && (prF !== 'noshelf' || noShelf(p));
+    const cnt = { notk: cfg.preps.filter(p => !p.arch && noTk(p)).length, noshelf: cfg.preps.filter(p => !p.arch && noShelf(p)).length, arch: cfg.preps.filter(p => p.arch).length };
+    const today = new Date(Date.now() + 5 * 36e5).toISOString().slice(0, 10);
+    const rows = cfg.preps.map((p, i) => !match(p) ? '' : p.arch ? `
+      <div class="edit" data-i="${i}" style="opacity:.75"><div class="top"><b style="flex:1">${esc(p.name)}</b><span class="tag-chk">архив · ${esc(p.unit || '')}</span><button class="tkbtn" data-unarch="${i}">↩️ Вернуть</button></div>
+        <p class="sub" style="margin:4px 0 0">Не попадает в план, заказы и закрытие (если нет партий). В истории и у партий — с этим названием</p></div>` : `
       <div class="edit" data-i="${i}">
-        <div class="top"><input data-f="name" value="${esc(p.name)}" placeholder="Название, например «Сироп ваниль»"><button class="x" data-del="${i}" title="Удалить">×</button></div>
+        <div class="top"><input data-f="name" value="${esc(p.name)}" placeholder="Название, например «Сироп ваниль»"><button class="tkbtn" data-arch="${i}" title="В архив">🗄 В архив</button></div>
         <div class="grid3">
-          <label>Единица<input data-f="unit" value="${esc(p.unit)}" placeholder="л"></label>
+          <label>Единица<select data-f="unit">${PREP_UNITS.concat(p.unit && PREP_UNITS.indexOf(p.unit) < 0 ? [p.unit] : []).map(u => `<option ${u === p.unit ? 'selected' : ''}>${esc(u)}</option>`).join('')}${p.unit ? '' : '<option value="" selected>—</option>'}</select></label>
           <label>Минимум<input data-f="min" inputmode="decimal" value="${esc(p.min)}" placeholder="0"></label>
           <label>Норма<input data-f="norm" inputmode="decimal" value="${esc(p.norm)}" placeholder="0"></label>
         </div>
-        <details class="nd" ${p.nd && Object.keys(p.nd).length ? 'open' : ''}><summary>Норма по дням${p.nd && Object.keys(p.nd).length ? ' · ' + Object.keys(p.nd).map(w => ND_WD[w] + ' ' + p.nd[w]).join(', ') : ''}</summary>
+        ${Number(String(p.norm).replace(',', '.')) > 0 && Number(String(p.min).replace(',', '.')) > Number(String(p.norm).replace(',', '.')) ? '<div class="tkerr" style="margin:6px 0 0">⚠️ Минимум больше нормы — так сохранить нельзя</div>' : ''}
+        ${p._u0 && p.unit !== p._u0 ? `<div class="pvbox">⚠️ Единица меняется «${esc(p._u0)}» → «${esc(p.unit)}». ${unitCompat(p._u0, p.unit) != null ? 'При сохранении бот пересчитает остатки, партии и историю, числа выше уже пересчитаны' : 'Это другая мера — бот не даст сохранить, пока у заготовки есть остаток'}</div>` : ''}
+        <details class="nd" ${p.nd && Object.keys(p.nd).filter(w => p.nd[w] !== '' && p.nd[w] != null).length ? 'open' : ''}><summary>Норма по дням${p.nd && Object.keys(p.nd).filter(w => p.nd[w] !== '' && p.nd[w] != null).length ? ' · ' + Object.keys(p.nd).filter(w => p.nd[w] !== '' && p.nd[w] != null).map(w => ND_WD[w] + ' ' + p.nd[w]).join(', ') : ''}</summary>
           <p class="sub" style="margin:4px 0 0">Пусто — обычная норма. День — это день, когда варят.</p>
           <div class="grid3 nd7">${[1, 2, 3, 4, 5, 6, 7].map(w => `<label>${ND_WD[w]}<input data-nd="${w}" inputmode="decimal" value="${esc(p.nd && p.nd[w] != null ? p.nd[w] : '')}" placeholder="${esc(p.norm || '')}"></label>`).join('')}</div>
         </details>
         <div class="grid3" style="grid-template-columns:1fr">
-          <label>Техкарта<select data-f="tk"><option value="">— нет —</option>${cards.filter(c => !c.hidden || p.tk === c.id).map(c => `<option value="${esc(c.id)}" ${p.tk === c.id ? 'selected' : ''}>${esc(c.title)}</option>`).join('')}</select></label>
+          ${(() => { const is = (cfg.tkIssues || []).find(x => x.pid === p.id && p.tk === x.tk0); return is ? `<div class="tkerr" style="margin:0 0 6px">⚠️ Техкарта «${esc(is.was)}» не найдена в таблице — её удалили или переименовали вместе с составом. Выбери нужную вручную и сохрани</div>` : ''; })()}
+          <label>Техкарта<select data-f="tk"><option value="">— нет —</option>${(() => { const cur = tkOf(cards, p.tk), lost = p.tk && !cur && cards.length ? `<option value="${esc(p.tk)}" selected>⚠️ не найдена — выбери</option>` : ''; return lost + cards.filter(c => !c.hidden || c === cur).map(c => `<option value="${esc(c.id)}" ${c === cur ? 'selected' : ''}>${esc(c.title)}${c.err ? ' ⚠️' : ''}</option>`).join(''); })()}</select></label>
         </div>
         <div class="grid3" style="grid-template-columns:1fr 1fr">
           <label>${p.frz ? 'Хранится после разморозки, дней' : 'Срок хранения, дней'}<input data-f="shelf" inputmode="numeric" value="${esc(p.shelf || '')}" placeholder="${esc(tkShelf(cards, p.tk) || '—')}"></label>
@@ -253,48 +298,65 @@ Object.assign(views, {
         </div>
         ${p.frz ? `<div class="grid3" style="grid-template-columns:1fr"><label>Держать в морозилке минимум (${esc(p.unit || 'ед.')}) — меньше, и бот пишет «сварить»<input data-f="frzMin" inputmode="decimal" value="${esc(p.frzMin ? String(p.frzMin).replace('.', ',') : '')}" placeholder="${/^(мл|ml|г|гр|g)/i.test(p.unit || '') ? '1000' : '1'}"></label></div>` : ''}
         <label class="switch"><input type="checkbox" data-f="frz" ${p.frz ? 'checked' : ''}> ❄️ Замораживаем (часть кладут в морозилку)</label>
+        <details class="nd" ${prPv[p.id] ? 'open' : ''}><summary>🔮 Проверить: сколько бот предложит сварить</summary>
+          <div class="grid3" style="grid-template-columns:1fr 1fr;margin-top:6px"><label>Дата<input type="date" data-pvd="${i}" value="${esc((prPv[p.id] || {}).date || today)}"></label>
+            <label>${p.frz ? 'В морозилке' : 'Остаток'} (${esc(p.unit || '')})<input data-pvh="${i}" inputmode="decimal" value="${esc((prPv[p.id] || {}).have || '')}" placeholder="0"></label></div>
+          <button class="btn soft" data-pv="${i}" style="padding:10px;margin-top:6px">Посчитать</button>${(prPv[p.id] || {}).t ? `<div class="pvbox">${esc(prPv[p.id].t)}</div>` : ''}
+        </details>
       </div>`).join('');
-    const cl = cfg.checklist || [];
-    const lowSw = card(`<label class="switch" style="margin:0"><input type="checkbox" id="lowOn" ${cfg.lowOn !== false ? 'checked' : ''}> Почти пусто — меньше 0,15 кг/л (150 г/мл): считать как пусто, варить с нуля и в 14:20 убрать остатки</label>`);
-    return lowSw + card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить. «Норма по дням» — своя норма на загруженные или тихие дни; цифры подсказывает бот в понедельник. Техкарта — рецепт из таблицы, выход для пересчёта берётся из строки «Выход» в техкарте. Срок хранения — для напоминаний в «Холодильнике»; пусто — берётся из техкарты (серая цифра).</p>
-      ${rows || ''}<button class="btn soft" id="add">+ Добавить заготовку</button>`) +
-      card(`<h2>Чек-лист закрытия</h2><p class="sub">Пункты, которые отмечают на закрытии смены</p><div id="cl">` +
-        cl.map((t, k) => `<div class="cl-row edit" style="padding:8px;margin-bottom:8px"><input data-cl value="${esc(t)}" placeholder="Например: почистить кофемашину"><button class="x" data-cldel="${k}">×</button></div>`).join('') +
-        `</div><button class="btn soft" id="cladd">+ Добавить пункт</button><button class="btn" id="clsave">Сохранить чек-лист</button>`) +
+    const lowSw = card(`<label class="switch" style="margin:0"><input type="checkbox" id="lowOn" ${cfg.lowOn !== false ? 'checked' : ''}> Почти пусто — меньше 0,15 кг/л (150 г/мл, но не больше 15% нормы): считать как пусто, варить с нуля и в 14:20 убрать остатки</label>`);
+    const flt = `<div class="flt"><input id="prQ" type="search" placeholder="🔎 Найти заготовку" value="${esc(prQ)}"></div>
+      <div class="chips" style="margin-bottom:10px">${[['', 'Все'], ['notk', 'Без техкарты · ' + cnt.notk], ['noshelf', 'Без срока · ' + cnt.noshelf], ['arch', 'Архив · ' + cnt.arch]].map(([k, l]) => `<button class="chip ${prF === k ? 'on' : ''}" data-prf="${k}">${esc(l)}</button>`).join('')}</div>`;
+    return lowSw + card(`<h2>Список заготовок</h2><p class="sub">Минимум — ниже этого нужно варить. Норма — до скольки варить (минимум не больше нормы). «Без срока» — нет срока ни в карточке, ни в техкарте. Удалять нельзя — только в архив: в истории и у партий название останется. Чек-лист закрытия — в «Управлении» → «🌙 Закрытие»</p>
+      ${flt}${rows.trim() || '<p class="sub">Ничего не нашлось</p>'}${prF === 'arch' ? '' : '<button class="btn soft" id="add">+ Добавить заготовку</button>'}`) +
       `<div class="dock"><button class="btn" id="save">Сохранить заготовки</button></div>`;
   },
-
 });
 
 Object.assign(binds, {
   preps() {
     const collect = () => document.querySelectorAll('.edit[data-i]').forEach(row => {
       const p = cfg.preps[row.dataset.i];
-      row.querySelectorAll('input,select').forEach(inp => {
+      row.querySelectorAll('input[data-f],select[data-f],input[data-nd]').forEach(inp => {
         if (inp.dataset.nd) { p.nd = p.nd || {}; p.nd[inp.dataset.nd] = inp.value; return; }
         p[inp.dataset.f] = inp.type === 'checkbox' ? inp.checked : inp.value;
       });
     });
-    // «Замораживаем» — сразу показать/спрятать поле «В морозилке, дней»
-    document.querySelectorAll('.edit input[data-f="frz"]').forEach(cb => cb.onchange = () => { collect(); render(); });
-    document.getElementById('add').onclick = () => {
-      collect(); cfg.preps.push({ name: '', unit: '', min: '', norm: '', tk: '', yield: '' }); render();
+    const keepY = () => { const y = window.scrollY; render().then(() => window.scrollTo(0, y)); };
+    document.querySelectorAll('.edit input[data-f="frz"]').forEach(cb => cb.onchange = () => { collect(); keepY(); });
+    document.querySelectorAll('.edit input[data-f="min"], .edit input[data-f="norm"]').forEach(i => i.onchange = () => { collect(); keepY(); });
+    // единица: л↔мл, кг↔г — числа пересчитываем сразу (бот при сохранении пересчитает остатки и историю)
+    document.querySelectorAll('.edit select[data-f="unit"]').forEach(sel => sel.onchange = () => {
+      const p = cfg.preps[sel.closest('.edit').dataset.i], from = p.unit; collect();
+      const k = unitCompat(from, p.unit);
+      if (k != null && k !== 1) { const sc = v => { const n = toNum(v); return n === '' || isNaN(n) ? v : fmt(Math.round(n * k * 1000) / 1000); }; ['min', 'norm', 'frzMin'].forEach(f => { if (p[f] !== '' && p[f] != null) p[f] = sc(p[f]); }); if (p.nd) Object.keys(p.nd).forEach(w => p.nd[w] = sc(p.nd[w])); toast('Минимум и норма пересчитаны в ' + p.unit); }
+      keepY();
+    });
+    const q = document.getElementById('prQ'); if (q) q.oninput = () => { collect(); prQ = q.value; clearTimeout(q._t); q._t = setTimeout(() => render().then(() => { const n = document.getElementById('prQ'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }), 250); };
+    document.querySelectorAll('[data-prf]').forEach(b => b.onclick = () => { collect(); prF = b.dataset.prf; render(); });
+    const add = document.getElementById('add'); if (add) add.onclick = () => {
+      collect(); prF = ''; prQ = ''; cfg.preps.push({ name: '', unit: 'л', min: '', norm: '', tk: '', yield: '', _u0: '' }); render();
       setTimeout(() => { const l = document.querySelectorAll('.edit input[data-f="name"]'); if (l.length) { l[l.length - 1].focus(); l[l.length - 1].scrollIntoView({ block: 'center' }); } }, 50);
     };
-    document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { collect(); cfg.preps.splice(+b.dataset.del, 1); render(); });
-    const clCollect = () => { cfg.checklist = [...document.querySelectorAll('[data-cl]')].map(i => i.value); };
-    document.getElementById('cladd').onclick = () => { collect(); clCollect(); cfg.checklist.push(''); render(); setTimeout(() => { const l = document.querySelectorAll('[data-cl]'); if (l.length) { l[l.length - 1].focus(); l[l.length - 1].scrollIntoView({ block: 'center' }); } }, 50); };
-    document.querySelectorAll('[data-cldel]').forEach(b => b.onclick = () => { collect(); clCollect(); cfg.checklist.splice(+b.dataset.cldel, 1); render(); });
-    document.getElementById('clsave').onclick = async e => {
-      clCollect(); e.target.disabled = true;
-      try { const r = await call('saveChecklist', { items: cfg.checklist }); cfg.checklist = r.checklist; me = await call('me'); toast('Чек-лист сохранён ✅'); haptic('success'); render(); }
-      catch (err) { toast(err.message); e.target.disabled = false; }
-    };
+    document.querySelectorAll('[data-arch]').forEach(b => b.onclick = async () => { collect(); const p = cfg.preps[+b.dataset.arch];
+      if (!(await confirmBox(`«${p.name}» — в архив? Пропадёт из плана, заказов и закрытия. В истории и у партий название останется. Вернуть можно в фильтре «Архив». Не забудь «Сохранить»`))) return;
+      p.arch = 1; p.archAt = Date.now(); keepY(); });
+    document.querySelectorAll('[data-unarch]').forEach(b => b.onclick = () => { collect(); const p = cfg.preps[+b.dataset.unarch]; delete p.arch; delete p.archAt; toast('Вернули — не забудь «Сохранить»'); keepY(); });
+    document.querySelectorAll('[data-pv]').forEach(b => b.onclick = async () => {
+      collect(); const i = +b.dataset.pv, p = cfg.preps[i], date = document.querySelector(`[data-pvd="${i}"]`).value, have = document.querySelector(`[data-pvh="${i}"]`).value;
+      const pid = p.id || ('new' + i); prPv[pid] = { date, have, t: '' };
+      b.disabled = true; b.textContent = 'Считаю…';
+      try { const r = await call('prepPreview', { p: Object.assign({}, p, { id: pid }), date, have }); prPv[pid].t = r.t; } catch (e) { prPv[pid].t = '⚠️ ' + e.message; }
+      keepY();
+    });
     const lo = document.getElementById('lowOn');
     if (lo) lo.onchange = async () => { const on = lo.checked; lo.disabled = true; try { const r = await call('setLowOn', { on }); cfg.lowOn = r.lowOn; toast(r.lowOn ? '«Почти пусто» включено ✅' : '«Почти пусто» выключено'); haptic('success'); } catch (e) { toast(e.message); lo.checked = !on; } lo.disabled = false; };
     document.getElementById('save').onclick = async e => {
-      collect(); e.target.disabled = true;
-      try { const r = await call('savePreps', { preps: cfg.preps }); cfg.preps = r.preps; me = await call('me'); toast('Сохранено ✅'); haptic('success'); render(); }
+      collect();
+      const bad = cfg.preps.find(p => !p.arch && String(p.name || '').trim() && Number(String(p.norm).replace(',', '.')) > 0 && Number(String(p.min).replace(',', '.')) > Number(String(p.norm).replace(',', '.')));
+      if (bad) { toast(bad.name + ': минимум больше нормы'); haptic('error'); return; }
+      e.target.disabled = true;
+      try { const r = await call('savePreps', { preps: cfg.preps.map(p => { const o = Object.assign({}, p); delete o._u0; return o; }) }); cfg.preps = r.preps; me = await call('me'); toast('Сохранено ✅'); haptic('success'); render(); }
       catch (err) { toast(err.message); e.target.disabled = false; }
     };
   },
@@ -318,7 +380,7 @@ Object.assign(binds, {
     });
     document.querySelectorAll('[data-card]').forEach(el => el.onclick = () => {
       const c = tkCards.find(x => x.id === el.dataset.card); if (!c) return;
-      const p = me.preps.find(x => x.tk === c.id);
+      const p = me.preps.find(x => x.tk && (x.tk === c.id || x.tk === c.key));
       openTk(c, p, null);
     });
   }
