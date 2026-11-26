@@ -402,7 +402,7 @@
 .mgtime{flex:0 0 46px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--forest)}
 .mgtxt{flex:1;min-width:0}
 .mgtxt b{display:block;font-size:15px;line-height:1.3}
-.mgtxt span{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.35}
+.mgtxt>span{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.35}
 .mgrow.off .mgtime,.mgrow.off .mgtxt{opacity:.45}
 .mgsw{position:relative;flex:0 0 46px;height:28px}
 .mgsw input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
@@ -415,3 +415,9 @@
 .mgnote{background:var(--cream);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.4;margin:10px 0}
 #bmText{min-height:170px;resize:vertical;line-height:1.4}
 .mgdel{margin-top:10px;color:var(--danger)}
+.mgchev{flex:0 0 auto;color:var(--muted);font-size:22px;line-height:1}
+.mgrow .ava{width:32px;height:32px;font-size:14px}
+.mgrow.acrow{cursor:default}
+.mgrow.off .mgtxt{opacity:.45}
+.mgsw.lock{opacity:.4}
+.mgtxt b .stb{margin-left:6px}

@@ -12,9 +12,12 @@ function header() {
     <div class="hello">Привет, ${esc(first)} 👋</div></div>`;
 }
 function tabsList() { return sortTabs(tabsBase()); }
+const TAB_ALL = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', 'Задачи'], ['events', 'События'], ['grafik', 'График'], ['fridge', 'Холодильник'], ['tk', 'Техкарты'], ['regs', 'Регламент'],
+  ['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История'], ['mgmt', 'Управление']];
 function tabsBase() {
   if (me.orderer && !me.isAdmin) return me.grWe && me.grTab ? [['order', 'Заказ'], ['grafik', 'График']] : [['order', 'Заказ']];   // Азиз: сб/вс в Рассвете
   const tasksLbl = 'Задачи' + (me.openTasks ? `<span class="tabcount">${me.openTasks}</span>` : '');
+  if (Array.isArray(me.acc)) return TAB_ALL.filter(x => me.acc.indexOf(x[0]) >= 0).map(x => x[0] === 'tasks' ? ['tasks', tasksLbl] : x);   // «Управление» → «Персонал» (бот считает сам)
   const t = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', tasksLbl], ['events', 'События'], ['fridge', 'Холодильник'], ['tk', 'Техкарты'], ['regs', 'Регламент']];
   if (me.isAdmin || (me.grTab && !me.isOwner && (me.statuses || {})[me.name] !== 'управляющий')) t.splice(5, 0, ['grafik', 'График']);   // владельцам и управляющим не нужна
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
@@ -109,7 +112,9 @@ if (!window.__tabsRp) {
 }
 render.seq = 0;
 async function render() {
-  const tabs = tabsList().map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('');
+  const tl0 = tabsList();   // вкладку закрыли в «Персонале» — на первую доступную
+  if (tl0.length && TAB_ALL.some(x => x[0] === tab) && !tl0.some(x => x[0] === tab)) tab = tl0[0][0];
+  const tabs = tl0.map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('');
   const my = ++render.seq;
   // та же вкладка — после перерисовки остаёмся на том же месте экрана (иначе прыгает наверх)
   const keep = tab === render.lastTab && !render.toTop, y = window.scrollY;
