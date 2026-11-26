@@ -19,6 +19,7 @@ function tabsBase() {
   if (me.isAdmin || (me.grTab && !me.isOwner && (me.statuses || {})[me.name] !== 'управляющий')) t.splice(5, 0, ['grafik', 'График']);   // владельцам и управляющим не нужна
   if (me.isAdmin) t.push(['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История']);
   else if (me.isViewer) t.push(['history', 'История']);   // админ-наблюдатель: всё как у сотрудника + история закрытий
+  if (me.mgmt) t.push(['mgmt', 'Управление']);   // админ и те, кому он выдал доступ (js/14_mgmt.js)
   return t;
 }
 // ---- свой порядок вкладок: зажал ~0,4 с → тащи → отпустил (хранится в боте, TABS_<id>) ----

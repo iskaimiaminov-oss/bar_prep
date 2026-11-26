@@ -26,7 +26,7 @@ function initKeyboard() {
 // ---- обновление свайпом вниз ----
 async function refreshAll() {
   taskData = evData = homeData = hist = cfg = tkCards = null; cfgP = tkP = null;
-  fridgeData = bkData = cardData = null;
+  fridgeData = bkData = cardData = null; bmD = null;
   Object.keys(shiftCache).forEach(k => delete shiftCache[k]); Object.keys(shiftLoading).forEach(k => delete shiftLoading[k]);
   await boot(); render(); prefetch();
 }
