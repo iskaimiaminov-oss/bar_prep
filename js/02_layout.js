@@ -13,7 +13,7 @@ function header() {
 }
 // «🎄 Штоллен» — всегда первая и закреплена у всех, кроме точек Яндекс/Узум (личный порядок её не двигает)
 const TAB_PIN = ['sht', '🎄 Штоллен'];
-function tabPinned() { return !!me && !(me.orderer && !me.isAdmin); }
+function tabPinned() { return !!me && !(me.orderer && !me.isAdmin) && (me.tabsOff || []).indexOf(TAB_PIN[0]) < 0; }   // выключили в «Управление» → «Вкладки» — нет ни у кого
 function tabsList() { return (tabPinned() ? [TAB_PIN] : []).concat(sortTabs(tabsBase())); }
 const TAB_ALL = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', 'Задачи'], ['events', 'События'], ['grafik', 'График'], ['fridge', 'Холодильник'], ['tk', 'Техкарты'], ['regs', 'Регламент'],
   ['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История'], ['mgmt', 'Управление']];
@@ -117,7 +117,7 @@ if (!window.__tabsRp) {
 render.seq = 0;
 async function render() {
   const tl0 = tabsList();   // вкладку закрыли в «Персонале» — на первую доступную
-  if (tl0.length && TAB_ALL.some(x => x[0] === tab) && !tl0.some(x => x[0] === tab)) tab = tl0[0][0];
+  if (tl0.length && (tab === TAB_PIN[0] || TAB_ALL.some(x => x[0] === tab)) &&!tl0.some(x => x[0] === tab)) tab = tl0[0][0];
   const tabs = tl0.map(([k, l]) => `<button class="tab ${k === tab ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('');
   const my = ++render.seq;
   // та же вкладка — после перерисовки остаёмся на том же месте экрана (иначе прыгает наверх)

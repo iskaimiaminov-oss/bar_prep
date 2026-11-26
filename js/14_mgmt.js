@@ -1,7 +1,7 @@
 // Файл «js/14_mgmt.js»: вкладка «Управление» (админ и те, кому он выдал доступ): подвкладки «Сообщения», «Персонал», «График» (настройки — js/08_grafik.js), «Журнал»
 // Сообщения: все рассылки бота по расписанию (встроенные + свои) — текст-шаблон, время, частота, кому, вкл/выкл, проверка себе. Бот: 19_msgs.gs
 let mgSub = 'attn', bmD = null, bmEd = null, mgY = 0;   // с 26.11 первой открывается «⚠️ Внимание»
-const MG_SUBS = [['attn', '⚠️ Внимание'], ['msgs', '✉️ Сообщения'], ['ppl', '👥 Персонал'], ['gr', '🗓 График'], ['close', '🌙 Закрытие'], ['flow', '📊 Расход'], ['log', '📜 Журнал']];
+const MG_SUBS = [['attn', '⚠️ Внимание'], ['msgs', '✉️ Сообщения'], ['ppl', '👥 Персонал'], ['tabs', '🗂 Вкладки'], ['gr', '🗓 График'], ['close', '🌙 Закрытие'], ['flow', '📊 Расход'], ['log', '📜 Журнал']];
 const MG_WD = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const mgHm = m => typeof m === 'number' ? String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0') : '';
 const BM_FREQ = [['d1', 'Каждый день'], ['d2', 'Через день'], ['n', 'Каждые N дней'], ['dows', 'По дням недели']];
@@ -12,6 +12,7 @@ Object.assign(views, {
     const subs = `<div class="mgsubs">${MG_SUBS.map(([k, l]) => `<button class="mgsub ${k === mgSub ? 'on' : ''}" data-mgsub="${k}">${l}</button>`).join('')}</div>`;
     if (mgSub === 'msgs') { bmD = bmD || await call('bmList'); return subs + (bmEd ? bmEdView() : bmListView()); }
     if (mgSub === 'ppl') { acD = acD || await call('acList'); return subs + (acEd ? acEdView() : acListView()); }
+    if (mgSub === 'tabs') { toD = toD || await call('toList'); return subs + toView(); }
     if (mgSub === 'gr') { grCfgD = grCfgD || await call('grCfg'); return subs + grCfgView(); }
     if (mgSub === 'log') { mlD = mlD || await call('mlList'); return subs + mlView(); }
     if (mgSub === 'flow') { flD = flD || await call('flowView', { weeks: flW }); return subs + flView(); }
@@ -118,8 +119,9 @@ function bmPayload() {
 Object.assign(binds, {
   mgmt() {
     const $ = id => document.getElementById(id);
-    document.querySelectorAll('[data-mgsub]').forEach(b => b.onclick = () => { if (mgSub === b.dataset.mgsub) return; mgSub = b.dataset.mgsub; flD = null; atD = null; clEd = null; bmEd = null; acEd = null; acD = null; grCfgD = null; grCfgP = null; grCfgNeed = null; mlD = null; mlF = ''; mlMore = 0; render(); });
+    document.querySelectorAll('[data-mgsub]').forEach(b => b.onclick = () => { if (mgSub === b.dataset.mgsub) return; mgSub = b.dataset.mgsub; flD = null; atD = null; clEd = null; bmEd = null; acEd = null; acD = null; grCfgD = null; grCfgP = null; grCfgNeed = null; mlD = null; mlF = ''; mlMore = 0; toD = null; render(); });
     if (mgSub === 'ppl' && acD) return acBind();
+    if (mgSub === 'tabs' && toD) return toBind();
     if (mgSub === 'gr' && grCfgD) return grCfgBind();
     if (mgSub === 'log') return mlBind();
     if (mgSub === 'flow') return flBind();
@@ -250,9 +252,32 @@ function acBind() {
     try { acD = await call('acReset', who); toast('Готово'); re(); } catch (e) { toast(e.message); rs.disabled = false; }
   };
 }
+// ---- «Вкладки»: показывать / скрыть у всех (и у главного админа). Включённая — как в «Персонале». Бот: toList / toSave в 19b_access.gs (TABS_OFF) ----
+let toD = null;
+function toView() {
+  const lock = l => `<div class="mgrow acrow"><div class="mgtxt"><b>${l}</b><span>всегда показывается</span></div></div>`;
+  return card(`<h2>🗂 Вкладки</h2><p class="sub">Выключил — вкладка пропадает у всех, и у тебя тоже, бот не даст ей пользоваться. Включил — снова видна тем, кому разрешено в «Персонале»</p>`
+    + lock('Сегодня') + toD.tabs.map(t => `<div class="mgrow acrow ${t.on ? '' : 'off'}"><div class="mgtxt"><b>${esc(t.l)}</b><span>${t.on ? 'показывается' : 'скрыта у всех'}</span></div>
+      <label class="mgsw" data-tok="${esc(t.k)}"><input type="checkbox" ${t.on ? 'checked' : ''} aria-label="${esc(t.l)}"><i></i></label></div>`).join('') + lock('Управление'));
+}
+function toBind() {
+  document.querySelectorAll('[data-tok]').forEach(l => {
+    const inp = l.querySelector('input');
+    inp.onchange = async () => {
+      const k = l.dataset.tok, on = inp.checked;
+      try { toD = await call('toSave', { k, on }); haptic('success'); }
+      catch (e) { inp.checked = !on; toast(e.message); return; }
+      me.tabsOff = toD.tabs.filter(t => !t.on).map(t => t.k);
+      if (Array.isArray(me.acc)) me.acc = me.acc.filter(x => x !== k);
+      if (k === 'grafik' && !on) me.grTab = false;
+      if (on) { try { Object.assign(me, await call('me')); } catch (e) {} }   // включили — кому видно, считает бот по «Персоналу»
+      const y = window.scrollY; render().then(() => window.scrollTo(0, y));
+    };
+  });
+}
 // ---- «Журнал»: кто, когда и что поменял в «Управлении» (MGMT_LOG, последние 300). Бот: mlog / mlList в 19_msgs.gs ----
 let mlD = null, mlF = '', mlMore = 0;
-const ML_SEC = { 'Сообщения': '✉️', 'Персонал': '👥', 'График': '🗓', 'Заготовки': '🫙', 'Закрытие': '🌙' };
+const ML_SEC = { 'Сообщения': '✉️', 'Персонал': '👥', 'Вкладки': '🗂','График': '🗓', 'Заготовки': '🫙', 'Закрытие': '🌙' };
 function mlDay(ts) {
   const d = new Date(ts), t = new Date(), y = new Date(Date.now() - 864e5), same = (a, b) => a.toDateString() === b.toDateString();
   return same(d, t) ? 'Сегодня' : same(d, y) ? 'Вчера' : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
