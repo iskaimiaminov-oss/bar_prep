@@ -11,7 +11,10 @@ function header() {
     <div class="brand"><img class="logo" src="${LOGO}" alt=""><div><h1>Рассвет</h1><p>Твоя любимая кофейня🫶</p></div></div>
     <div class="hello">Привет, ${esc(first)} 👋</div></div>`;
 }
-function tabsList() { return sortTabs(tabsBase()); }
+// «🎄 Штоллен» — всегда первая и закреплена у всех, кроме точек Яндекс/Узум (личный порядок её не двигает)
+const TAB_PIN = ['sht', '🎄 Штоллен'];
+function tabPinned() { return !!me && !(me.orderer && !me.isAdmin); }
+function tabsList() { return (tabPinned() ? [TAB_PIN] : []).concat(sortTabs(tabsBase())); }
 const TAB_ALL = [['today', 'Сегодня'], ['count', 'Закрытие'], ['cash', 'Наличные'], ['tasks', 'Задачи'], ['events', 'События'], ['grafik', 'График'], ['fridge', 'Холодильник'], ['tk', 'Техкарты'], ['regs', 'Регламент'],
   ['preps', 'Заготовки'], ['staff', 'Команда'], ['history', 'История'], ['mgmt', 'Управление']];
 function tabsBase() {
@@ -73,15 +76,16 @@ function tabFinish() {
   clearTimeout(s.raf); tabDragEnd = Date.now(); tabDragOn = false;
   const bar = s.bar, el = s.el;
   bar.classList.remove('drag'); el.classList.remove('lift'); el.style.transform = '';
-  const ord = [...bar.querySelectorAll('.tab')].map(t => t.dataset.tab);
-  if (ord.join() === tabsList().map(x => x[0]).join()) return;
+  const all = [...bar.querySelectorAll('.tab')].map(t => t.dataset.tab), ord = all.filter(k => k !== TAB_PIN[0]);
+  if (all.join() === tabsList().map(x => x[0]).join()) return;
+  if (all[0] !== TAB_PIN[0] && tabPinned()) setTimeout(render, 0);   // перетащили что-то перед закреплённой — вернём её первой
   me.tabOrder = ord.join(','); render.tabScroll = bar.scrollLeft;
   haptic('success');
   call('tabOrder', { o: ord }).catch(e => toast('Порядок не сохранился: ' + e.message));
 }
 function initTabDrag(bar) {
   bar.addEventListener('pointerdown', e => {
-    const el = e.target.closest('.tab'); if (!el || tabSt || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const el = e.target.closest('.tab'); if (!el || el.dataset.tab === TAB_PIN[0] || tabSt || (e.pointerType === 'mouse' && e.button !== 0)) return;
     tabSt = { bar, el, id: e.pointerId, x0: e.clientX, y0: e.clientY, on: false, px: e.clientX - bar.getBoundingClientRect().left };
     tabSt.timer = setTimeout(tabStart, 400);
   });

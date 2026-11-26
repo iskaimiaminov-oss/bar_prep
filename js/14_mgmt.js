@@ -23,7 +23,7 @@ Object.assign(views, {
 
 function bmRow(x) {
   const sub = [x.freq, x.to + ' — ' + x.who, x.textOwn ? '✏️ свой текст' : ''].filter(Boolean).join(' · ');
-  return `<div class="mgrow ${x.on ? '' : 'off'}" data-bm="${esc(x.id)}"><div class="mgtime">${x.id === 'nice' ? '🎲' : mgHm(x.at)}</div>
+  return `<div class="mgrow ${x.on ? '' : 'off'}" data-bm="${esc(x.id)}"><div class="mgtime">${x.atLbl ? esc(x.atLbl) : x.id === 'nice' ? '🎲' : mgHm(x.at)}</div>
     <div class="mgtxt"><b>${esc(x.t)}</b><span>${esc(sub)}</span></div>
     <label class="mgsw" data-bmsw="${esc(x.id)}"><input type="checkbox" ${x.on ? 'checked' : ''} aria-label="Включено"><i></i></label></div>`;
 }
