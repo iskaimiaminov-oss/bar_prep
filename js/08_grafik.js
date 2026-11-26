@@ -181,10 +181,10 @@ const grcGo = y => { render.toTop = true; return render().then(() => window.scro
 const GRC_LV = { S: 'Старший', P: 'Про', B: 'Бариста', T: 'Стажёр' };
 const GRC_WD = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const GRC_SH = [['M', 'Утро'], ['E', 'Вечер'], ['Mid', 'Середина']];
-// клетка: ✅ можно (0) · 🟡 реже (1–9) · 🟠 редко (10+) · ⛔ нельзя (нет)
-const grcState = v => typeof v !== 'number' ? 'no' : v === 0 ? 'ok' : v < 10 ? 'less' : 'rare';
-const GRC_IC = { ok: '✅', less: '🟡', rare: '🟠', no: '⛔' };
-const GRC_NEXT = { ok: 5, less: 20, rare: null, no: 0 };
+// клетка словами: можно (0) · реже (1–9) · редко (10–29) · очень редко (30+) · нельзя (нет)
+const grcState = v => typeof v !== 'number' ? 'no' : v === 0 ? 'ok' : v < 10 ? 'less' : v < 30 ? 'rare' : 'vrare';
+const GRC_IC = { ok: 'можно', less: 'реже', rare: 'редко', vrare: 'очень редко', no: 'нельзя' };
+const GRC_NEXT = { ok: 5, less: 20, rare: 40, vrare: null, no: 0 };
 const grcNeedRows = [['mWk', 'Утро, пн–чт'], ['mWe', 'Утро, пт–вс'], ['eWk', 'Вечер, пн–чт', 'плюс стажёр или середина'], ['eWe', 'Вечер, пт–вс'], ['mid', 'Середина 9:00–19:00, пн–вс', '0 — середину не ставить']];
 const GRC_NMIN = { mid: 0 }, GRC_NMAX = { mid: 2 };
 const grcDm = s => s ? s.slice(8, 10) + '.' + s.slice(5, 7) : '';
@@ -201,7 +201,7 @@ function grCfgView() {
       <h3>Уровень</h3><div class="grcchips">${Object.keys(GRC_LV).map(l => `<button class="grbtn ${p.level === l ? 'on' : ''}" data-grclv="${l}">${GRC_LV[l]}</button>`).join('')}</div>
       <h3>Выходит с</h3><p class="sub">Новенький или после отпуска: до этой даты бот не ставит смены. Пусто — работает как обычно</p>
       <div class="grcfrom"><input type="date" id="grcFrom" value="${esc(p.from || '')}"><button class="btn soft" id="grcFromX">Очистить</button></div>
-      <h3>Смены по дням недели</h3><p class="sub">Нажми на клетку, чтобы поменять: ✅ можно · 🟡 можно, но реже · 🟠 только если иначе никак · ⛔ нельзя</p>
+      <h3>Смены по дням недели</h3><p class="sub">Нажми на клетку — слово меняется по кругу: <b>можно</b> — ставит обычно · <b>реже</b> — можно, но лучше другого · <b>редко</b> — только если есть дыра · <b>очень редко</b> — самый крайний случай · <b>нельзя</b> — никогда</p>
       <table class="grcgrid"><tr><th></th>${GRC_SH.map(x => `<th>${x[1]}</th>`).join('')}</tr>${cells}</table>
       <button class="btn soft" id="grcByLv">Заполнить как обычно у уровня «${GRC_LV[p.level] || '—'}»</button>
       <h3>Ещё</h3>
