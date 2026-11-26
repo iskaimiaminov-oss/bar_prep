@@ -425,6 +425,15 @@ Object.assign(binds, {
       });
       const cash = { ik: cashVal('ik'), cf: cashVal('cf'), env: cashVal('env') };
       if (photos.some(p => p.loading)) { toast('Подожди, фото ещё загружаются…'); return; }
+      // «Изменить подсчёт» (с 27.11): сначала спросим бота, поменялось ли что-то. Нет — смена уже закрыта, никому ничего не уходит
+      const keepClosed = () => { countReopen = false; lastResult = null; draft = {}; checks.clear(); photos = []; cashChk = null; clearDraft(); render(); window.scrollTo(0, 0); toast('Ничего не изменилось — смена уже закрыта 👍'); };
+      const base = { values, rq, fq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), cash };
+      if (me.closed) {
+        btn.disabled = true; btn.textContent = 'Сверяю с прошлым закрытием…';
+        let r = null; try { r = await call('count', Object.assign({ onlySame: true }, base)); } catch (e) {}
+        btn.disabled = false; syncBtn();
+        if (r && r.same) return keepClosed();
+      }
       const m = missing();
       let force = false;
       if (m.length) {
@@ -442,7 +451,7 @@ Object.assign(binds, {
       }
       const cashWhy = cashChk && cashChk.res && cashChk.res.short ? { s1: !!cashChk.s1, s2: !!cashChk.s2, note: (cashChk.note || '').trim() } : null, cashFirst = cashChk ? cashChk.first : null;
       btn.disabled = true; btn.textContent = 'Отправляю…';
-      try { lastResult = await call('count', { values, rq, fq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); countReopen = false; me.closed = { by: me.name, at: Date.now(), items: lastResult.items || [] }; sentCopy = { day: workDay(), draft: JSON.parse(JSON.stringify(draft)), checks: [...checks], photos: photos.filter(p => p.id).map(p => Object.assign({}, p)) }; saveSent(sentCopy); draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
+      try { const res = await call('count', { values, rq, fq, checks: [...checks], photos: photos.filter(p => p.id).map(p => p.id), force, cash, cashWhy, cashFirst }); if (res && res.same) { btn.disabled = false; return keepClosed(); } lastResult = res; if (res && res.again) setTimeout(() => toast('Изменения отправлены админу и владельцам 📨'), 300); countReopen = false; me.closed = { by: me.name, at: Date.now(), items: lastResult.items || [] }; sentCopy = { day: workDay(), draft: JSON.parse(JSON.stringify(draft)), checks: [...checks], photos: photos.filter(p => p.id).map(p => Object.assign({}, p)) }; saveSent(sentCopy); draft = {}; checks.clear(); photos = []; hist = null; cashChk = null; clearDraft(); me = await call('me'); haptic('success'); render(); window.scrollTo(0, 0); askExtras(lastResult && lastResult.extra); }
       catch (e) { toast(e.message); btn.disabled = false; btn.textContent = cl.length ? '🌙 Закрыть смену' : 'Отправить остатки'; }
     };
   },
