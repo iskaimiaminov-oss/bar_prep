@@ -1,7 +1,7 @@
-// Файл «js/14_mgmt.js»: вкладка «Управление» (админ и те, кому он выдал доступ): подвкладки «Сообщения», «Персонал», «График» (настройки — js/08_grafik.js)…
+// Файл «js/14_mgmt.js»: вкладка «Управление» (админ и те, кому он выдал доступ): подвкладки «Сообщения», «Персонал», «График» (настройки — js/08_grafik.js), «Журнал»
 // Сообщения: все рассылки бота по расписанию (встроенные + свои) — текст-шаблон, время, частота, кому, вкл/выкл, проверка себе. Бот: 19_msgs.gs
 let mgSub = 'msgs', bmD = null, bmEd = null, mgY = 0;
-const MG_SUBS = [['msgs', '✉️ Сообщения'], ['ppl', '👥 Персонал'], ['gr', '🗓 График']];
+const MG_SUBS = [['msgs', '✉️ Сообщения'], ['ppl', '👥 Персонал'], ['gr', '🗓 График'], ['log', '📜 Журнал']];
 const MG_WD = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const mgHm = m => typeof m === 'number' ? String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0') : '';
 const BM_FREQ = [['d1', 'Каждый день'], ['d2', 'Через день'], ['n', 'Каждые N дней'], ['dows', 'По дням недели']];
@@ -13,6 +13,7 @@ Object.assign(views, {
     if (mgSub === 'msgs') { bmD = bmD || await call('bmList'); return subs + (bmEd ? bmEdView() : bmListView()); }
     if (mgSub === 'ppl') { acD = acD || await call('acList'); return subs + (acEd ? acEdView() : acListView()); }
     if (mgSub === 'gr') { grCfgD = grCfgD || await call('grCfg'); return subs + grCfgView(); }
+    if (mgSub === 'log') { mlD = mlD || await call('mlList'); return subs + mlView(); }
     return subs;
   }
 });
@@ -109,9 +110,10 @@ function bmPayload() {
 Object.assign(binds, {
   mgmt() {
     const $ = id => document.getElementById(id);
-    document.querySelectorAll('[data-mgsub]').forEach(b => b.onclick = () => { if (mgSub === b.dataset.mgsub) return; mgSub = b.dataset.mgsub; bmEd = null; acEd = null; acD = null; grCfgD = null; grCfgP = null; grCfgNeed = null; render(); });
+    document.querySelectorAll('[data-mgsub]').forEach(b => b.onclick = () => { if (mgSub === b.dataset.mgsub) return; mgSub = b.dataset.mgsub; bmEd = null; acEd = null; acD = null; grCfgD = null; grCfgP = null; grCfgNeed = null; mlD = null; mlF = ''; mlMore = 0; render(); });
     if (mgSub === 'ppl' && acD) return acBind();
     if (mgSub === 'gr' && grCfgD) return grCfgBind();
+    if (mgSub === 'log') return mlBind();
     if (mgSub !== 'msgs' || !bmD) return;
     const go = y => { render.toTop = true; return render().then(() => window.scrollTo(0, y || 0)); };
     if (!bmEd) {
@@ -236,4 +238,30 @@ function acBind() {
     rs.disabled = true;
     try { acD = await call('acReset', who); toast('Готово'); re(); } catch (e) { toast(e.message); rs.disabled = false; }
   };
+}
+// ---- «Журнал»: кто, когда и что поменял в «Управлении» (MGMT_LOG, последние 300). Бот: mlog / mlList в 19_msgs.gs ----
+let mlD = null, mlF = '', mlMore = 0;
+const ML_SEC = { 'Сообщения': '✉️', 'Персонал': '👥', 'График': '🗓' };
+function mlDay(ts) {
+  const d = new Date(ts), t = new Date(), y = new Date(Date.now() - 864e5), same = (a, b) => a.toDateString() === b.toDateString();
+  return same(d, t) ? 'Сегодня' : same(d, y) ? 'Вчера' : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
+}
+function mlView() {
+  const all = (mlD && mlD.items) || [], secs = Object.keys(ML_SEC).filter(s => all.some(x => x.sec === s));
+  const list = all.filter(x => !mlF || x.sec === mlF), shown = list.slice(0, 60 + mlMore);
+  let h = `<h2>📜 Журнал изменений</h2><p class="sub">Кто, когда и что поменял в «Управлении»: сообщения бота, доступы к вкладкам, статусы, настройки графика. Хранятся последние 300 записей</p>`;
+  if (secs.length > 1) h += `<div class="chips">${[['', 'Все']].concat(secs.map(s => [s, ML_SEC[s] + ' ' + s])).map(([k, l]) => `<button class="chip ${mlF === k ? 'on' : ''}" data-mlf="${esc(k)}">${esc(l)}</button>`).join('')}</div>`;
+  if (!shown.length) return card(h + `<p class="sub" style="margin-top:12px">Пока пусто — здесь появится всё, что поменяют в «Управлении»</p>`);
+  let day = '';
+  shown.forEach(x => {
+    const dd = mlDay(x.ts), tm = new Date(x.ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    if (dd !== day) { day = dd; h += `<h3>${esc(dd)}</h3>`; }
+    h += `<div class="mgrow mlrow"><div class="mgtime">${tm}</div><div class="mgtxt"><b>${esc(x.what)}</b><span>${ML_SEC[x.sec] || ''} ${esc(x.sec)} · ${esc(x.by)}</span></div></div>`;
+  });
+  if (list.length > shown.length) h += `<button class="btn soft" id="mlMore" style="margin-top:12px">Показать ещё (${list.length - shown.length})</button>`;
+  return card(h);
+}
+function mlBind() {
+  document.querySelectorAll('[data-mlf]').forEach(b => b.onclick = () => { mlF = b.dataset.mlf; mlMore = 0; softRender(); });
+  const m = document.getElementById('mlMore'); if (m) m.onclick = () => { mlMore += 60; softRender(); };
 }
